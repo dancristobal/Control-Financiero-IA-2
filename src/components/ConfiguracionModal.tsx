@@ -263,9 +263,8 @@ function doPost(e) {
 
       if (data.row) {
         var rowData = data.row.slice();
-        if (driveResult && driveResult.fileUrl) {
-          rowData.push(driveResult.fileUrl);
-        }
+        var driveFileUrl = (driveResult && driveResult.fileUrl) ? driveResult.fileUrl : "";
+        rowData.push(driveFileUrl);
         sheet.appendRow(rowData);
       }
 
@@ -278,9 +277,30 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Acción directa: guardar sólo en Google Drive
+    // Acción directa: guardar sólo en Google Drive y actualizar la fila en la hoja si existe
     if (data.action === "saveToDrive") {
       var directDrive = guardarFacturaEnDrive(data);
+      if (directDrive && directDrive.success && directDrive.fileUrl) {
+        try {
+          var ssDirect = data.sheetId ? SpreadsheetApp.openById(data.sheetId) : SpreadsheetApp.getActiveSpreadsheet();
+          var sDirect = ssDirect.getSheetByName(tabName);
+          if (sDirect && data.idFactura) {
+            var lr = sDirect.getLastRow();
+            if (lr >= 2) {
+              var idRows = sDirect.getRange(2, 1, lr - 1, 1).getValues();
+              for (var ri = 0; ri < idRows.length; ri++) {
+                if (String(idRows[ri][0] || "").trim().toLowerCase() === String(data.idFactura).trim().toLowerCase()) {
+                  // Columna 14 es "Enlace Google Drive"
+                  sDirect.getRange(ri + 2, 14).setValue(directDrive.fileUrl);
+                  break;
+                }
+              }
+            }
+          }
+        } catch (updateErr) {
+          Logger.log("Aviso al actualizar enlace en hoja: " + updateErr);
+        }
+      }
       return ContentService.createTextOutput(JSON.stringify({ status: "success", drive: directDrive }))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -363,16 +383,22 @@ function guardarFacturaEnDrive(params) {
     var nuevoNombreArchivo = idFactura + " " + fechaEmision + extension;
 
     // Decodificar Base64 y crear el archivo en la carpeta del proveedor
-    var base64Limpio = params.archivo.base64;
+    var base64Limpio = String(params.archivo.base64 || "");
     var commaIdx = base64Limpio.indexOf(",");
-    if (commaIdx !== -1 && base64Limpio.indexOf("base64") !== -1) {
+    if (commaIdx !== -1) {
       base64Limpio = base64Limpio.substring(commaIdx + 1);
     }
+    base64Limpio = base64Limpio.replace(/\s+/g, "");
     var mimeType = params.archivo.mimeType || "application/pdf";
     var bytes = Utilities.base64Decode(base64Limpio);
     var blob = Utilities.newBlob(bytes, mimeType, nuevoNombreArchivo);
 
     var archivoDrive = carpetaProveedor.createFile(blob);
+    try {
+      archivoDrive.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (eShare) {
+      Logger.log("Aviso al establecer permisos públicos: " + eShare);
+    }
 
     return {
       success: true,
@@ -965,26 +991,44 @@ function handleGetFacturas(sheetId, tabName) {
                 {resultadoVerificacion && (
                   <div
                     className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
-                      resultadoVerificacion.accessible
+                      resultadoVerificacion.code === 'VERSION_DESACTUALIZADA'
+                        ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                        : resultadoVerificacion.accessible
                         ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
                         : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
-                      {resultadoVerificacion.accessible ? (
+                      {resultadoVerificacion.code === 'VERSION_DESACTUALIZADA' ? (
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : resultadoVerificacion.accessible ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                       ) : (
                         <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                       )}
                       <div>
                         <div className="font-bold">
-                          {resultadoVerificacion.accessible
-                            ? '¡Conexión Verificada con Éxito!'
+                          {resultadoVerificacion.code === 'VERSION_DESACTUALIZADA'
+                            ? '⚠️ Versión antigua detectada en Apps Script (Sin Google Drive)'
+                            : resultadoVerificacion.accessible
+                            ? '¡Conexión Verificada con Éxito a Google Sheets y Drive!'
                             : 'Acceso Denegado por Google (Falta permiso público)'}
                         </div>
                         <p className="mt-1 text-[11px] opacity-90">
                           {resultadoVerificacion.mensaje}
                         </p>
+                        {resultadoVerificacion.code === 'VERSION_DESACTUALIZADA' && (
+                          <div className="mt-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setTabActiva('script')}
+                              className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>Ir a la pestaña &quot;Código Apps Script&quot; y actualizar en 1 minuto</span>
+                              <span>→</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

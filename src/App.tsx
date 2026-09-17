@@ -445,6 +445,8 @@ export default function App() {
       const facturaFinal: Factura = {
         ...nuevaFactura,
         ...(resData.factura || {}),
+        archivoBase64: nuevaFactura.archivoBase64 || resData.factura?.archivoBase64 || archivoInfo?.base64Data,
+        archivoNombre: nuevaFactura.archivoNombre || resData.factura?.archivoNombre || archivoInfo?.fileName,
         driveFileName: resData.factura?.driveFileName || resData.driveInfo?.nombreArchivo || `${nuevaFactura.idFactura} ${nuevaFactura.fechaEmision}.pdf`,
         driveFolderName: resData.factura?.driveFolderName || resData.driveInfo?.carpetaProveedor || nuevaFactura.nombreProveedor,
         driveFileUrl: resData.factura?.driveFileUrl || resData.driveInfo?.fileUrl,
@@ -512,6 +514,75 @@ export default function App() {
       // Fallback local save
       setFacturas((prev) => [nuevaFactura, ...prev]);
       return { success: true, message: 'Guardada en memoria local' };
+    } finally {
+      setGlobalLoading({ activo: false, mensaje: '' });
+    }
+  };
+
+  // Handler para subir a Google Drive a posteriori (o reintentar)
+  const handleUploadToDrive = async (factura: Factura) => {
+    if (!factura.archivoBase64) {
+      alert('Esta factura no tiene el archivo digital en memoria para subir a Google Drive.');
+      return { success: false, error: 'Sin archivo digital en memoria' };
+    }
+    setGlobalLoading({
+      activo: true,
+      mensaje: `Archivando ${factura.idFactura} en Google Drive...`,
+    });
+    try {
+      const res = await fetch('/api/sheets/upload-to-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idFactura: factura.idFactura,
+          config: sheetsConfig,
+          archivo: {
+            base64Data: factura.archivoBase64,
+            fileName: factura.archivoNombre || `${factura.idFactura} ${factura.fechaEmision}.pdf`,
+            mimeType: factura.archivoNombre?.toLowerCase().endsWith('.png') ? 'image/png' : 'application/pdf',
+          },
+          nombreProveedor: factura.nombreProveedor,
+          fechaEmision: factura.fechaEmision,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.drive) {
+        setFacturas((prev) =>
+          prev.map((f) => {
+            if (f.idFactura === factura.idFactura) {
+              return {
+                ...f,
+                driveGuardado: true,
+                driveFileUrl: data.drive.fileUrl,
+                driveFolderUrl: data.drive.carpetaProveedorUrl,
+                driveFileName: data.drive.fileName,
+                driveFolderName: data.drive.carpetaProveedor,
+                driveError: undefined,
+              };
+            }
+            return f;
+          })
+        );
+        setSyncToast({
+          tipo: 'success',
+          mensaje: `Factura ${factura.idFactura} archivada en Google Drive (Carpeta: ${data.drive.carpetaProveedor || factura.nombreProveedor})`,
+        });
+        return { success: true, drive: data.drive };
+      } else {
+        const err = data.error || 'Fallo al subir a Google Drive';
+        setFacturas((prev) =>
+          prev.map((f) => (f.idFactura === factura.idFactura ? { ...f, driveError: err } : f))
+        );
+        setSyncToast({
+          tipo: 'error',
+          mensaje: `Error al subir a Drive: ${err}`,
+        });
+        return { success: false, error: err };
+      }
+    } catch (e: any) {
+      const msg = e?.message || 'Error de conexión con Google Drive';
+      setSyncToast({ tipo: 'error', mensaje: msg });
+      return { success: false, error: msg };
     } finally {
       setGlobalLoading({ activo: false, mensaje: '' });
     }
@@ -723,6 +794,7 @@ export default function App() {
               onOpenConfig={() => setIsConfigOpen(true)}
               onSetGlobalLoading={setGlobalLoading}
               isGlobalLoading={globalLoading.activo}
+              onUploadToDrive={handleUploadToDrive}
             />
           )}
 

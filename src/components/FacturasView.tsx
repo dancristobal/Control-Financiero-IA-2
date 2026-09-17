@@ -50,6 +50,7 @@ interface FacturasViewProps {
   onOpenConfig: () => void;
   onSetGlobalLoading?: (loading: { activo: boolean; mensaje: string; progreso?: number }) => void;
   isGlobalLoading?: boolean;
+  onUploadToDrive?: (factura: Factura) => Promise<any> | void;
 }
 
 export const FacturasView: React.FC<FacturasViewProps> = ({
@@ -61,6 +62,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   onOpenConfig,
   onSetGlobalLoading,
   isGlobalLoading,
+  onUploadToDrive,
 }) => {
   // File Upload State
   const [archivosEnCola, setArchivosEnCola] = useState<ArchivoEnProceso[]>([]);
@@ -1105,6 +1107,24 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
           </div>
         </div>
 
+        {/* Banner de Aviso de Google Drive si hay facturas con aviso de subida */}
+        {sheetsConfig.endpointUrl && facturas.some(f => f.driveError) && (
+          <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Aviso Google Drive:</strong> Algunas facturas se registraron en Google Sheets pero no se guardaron en Drive (tu Apps Script ejecuta una versión anterior). Puedes actualizar la versión en 1 minuto en la pestaña &quot;Código Apps Script&quot;.
+              </span>
+            </div>
+            <button
+              onClick={onOpenConfig}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition-colors cursor-pointer"
+            >
+              Ver instrucciones de Apps Script
+            </button>
+          </div>
+        )}
+
         {/* Barra de Filtrado por Rango de Fechas (Selector Desde - Hasta) */}
         <div
           id="barra-filtro-fechas"
@@ -1364,7 +1384,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                       </span>
                     </td>
                     <td className="p-3.5 whitespace-nowrap">
-                      {fac.driveGuardado ? (
+                      {fac.driveFileUrl ? (
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
@@ -1378,38 +1398,52 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                             <span className="text-sky-400 shrink-0">📁</span>
                             <span className="truncate">{fac.driveFolderName || fac.nombreProveedor}</span>
                           </button>
-                          {fac.driveFileUrl && (
-                            <a
-                              href={fac.driveFileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-sky-400 hover:text-sky-300 font-bold text-xs"
-                              title="Abrir en Google Drive"
-                            >
-                              ↗
-                            </a>
-                          )}
+                          <a
+                            href={fac.driveFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-sky-400 hover:text-sky-300 font-bold text-xs"
+                            title="Abrir en Google Drive"
+                          >
+                            ↗
+                          </a>
                         </div>
-                      ) : fac.driveError ? (
-                        <span
-                          className="px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-500/30 text-[10px] font-mono cursor-help"
-                          title={`Error Drive: ${fac.driveError}`}
-                        >
-                          ⚠️ Aviso Drive
-                        </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFacturaParaVisor(fac);
-                          }}
-                          className="text-[10px] text-slate-400 hover:text-slate-200 font-mono underline decoration-dotted cursor-pointer"
-                          title="Ver documento digital"
-                        >
-                          Ver Doc
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {fac.driveError && (
+                            <span
+                              className="px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-500/30 text-[10px] font-mono cursor-help"
+                              title={`Aviso Google Drive: ${fac.driveError}`}
+                            >
+                              ⚠️ Aviso
+                            </span>
+                          )}
+                          {fac.archivoBase64 && onUploadToDrive && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onUploadToDrive(fac);
+                              }}
+                              className="px-2 py-0.5 rounded bg-sky-600/20 hover:bg-sky-600/35 text-sky-300 border border-sky-500/30 text-[10px] font-mono font-semibold cursor-pointer transition-colors"
+                              title="Subir ahora a Google Drive (creará carpeta del proveedor si no existe)"
+                            >
+                              + Drive
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFacturaParaVisor(fac);
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-slate-200 font-mono underline decoration-dotted cursor-pointer"
+                            title="Ver documento digital en visor integrado"
+                          >
+                            Ver Doc
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="p-3.5 text-center whitespace-nowrap">
@@ -1597,6 +1631,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
           setFacturaSeleccionada(null);
           setFacturaParaVisor(fac);
         }}
+        onUploadToDrive={onUploadToDrive}
       />
 
       {/* Integrated PDF / Document Viewer Modal */}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   FileText,
@@ -16,6 +16,8 @@ import {
   FileSpreadsheet,
   Printer,
   CheckCircle2,
+  Eye,
+  RefreshCw,
 } from 'lucide-react';
 import { Factura } from '../types';
 
@@ -24,6 +26,30 @@ interface VisorFacturaModalProps {
   isOpen: boolean;
   onClose: () => void;
   onVerDetallesCompletos?: (factura: Factura) => void;
+}
+
+// Convert base64 data to Blob URL for clean browser/iframe rendering
+function base64ToBlobUrl(base64Data: string, mimeType: string = 'application/pdf'): string | null {
+  try {
+    let cleanBase64 = base64Data;
+    if (cleanBase64.includes(',')) {
+      cleanBase64 = cleanBase64.split(',')[1];
+    }
+    // Clean any whitespace or newlines
+    cleanBase64 = cleanBase64.replace(/\s/g, '');
+    
+    const byteCharacters = atob(cleanBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Error creating Blob URL from base64:', err);
+    return null;
+  }
 }
 
 export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
@@ -35,32 +61,68 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
   const [zoom, setZoom] = useState<number>(100);
   const [rotacion, setRotacion] = useState<number>(0);
   const [pantallaCompleta, setPantallaCompleta] = useState<boolean>(false);
+  // 'documento' (visor PDF/imagen), 'resumen' (representación contable formateada)
   const [vistaModo, setVistaModo] = useState<'documento' | 'resumen'>('documento');
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [iframeError, setIframeError] = useState<boolean>(false);
 
-  if (!isOpen || !factura) return null;
+  // Generar Blob URL cuando cambie la factura o su base64
+  useEffect(() => {
+    setIframeError(false);
+    if (!factura?.archivoBase64 || factura.archivoBase64.length < 30) {
+      setBlobUrl(null);
+      return;
+    }
+
+    const isPdf =
+      factura.archivoBase64.startsWith('data:application/pdf') ||
+      (factura.archivoNombre && factura.archivoNombre.toLowerCase().endsWith('.pdf')) ||
+      !factura.archivoBase64.startsWith('data:image/');
+
+    const mime = isPdf ? 'application/pdf' : 'image/jpeg';
+    const url = base64ToBlobUrl(factura.archivoBase64, mime);
+    setBlobUrl(url);
+
+    return () => {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [factura?.archivoBase64, factura?.archivoNombre]);
 
   // Determinar URL de previsualización según Drive o Base64
   const previewData = useMemo(() => {
+    if (!factura) {
+      return {
+        tipo: 'representacion_digital' as const,
+        url: null,
+        origen: 'digital' as const,
+      };
+    }
+
     // 1. Si tenemos base64 en la factura
     if (factura.archivoBase64 && factura.archivoBase64.length > 50) {
       const isPdf =
         factura.archivoBase64.startsWith('data:application/pdf') ||
-        (factura.archivoNombre && factura.archivoNombre.toLowerCase().endsWith('.pdf'));
+        (factura.archivoNombre && factura.archivoNombre.toLowerCase().endsWith('.pdf')) ||
+        !factura.archivoBase64.startsWith('data:image/');
+
       const isImg =
         factura.archivoBase64.startsWith('data:image/') ||
         (factura.archivoNombre &&
           /\.(jpg|jpeg|png|webp)$/i.test(factura.archivoNombre));
 
-      let src = factura.archivoBase64;
-      if (!src.startsWith('data:')) {
-        src = isPdf
+      let rawDataUrl = factura.archivoBase64;
+      if (!rawDataUrl.startsWith('data:')) {
+        rawDataUrl = isPdf
           ? `data:application/pdf;base64,${factura.archivoBase64}`
           : `data:image/jpeg;base64,${factura.archivoBase64}`;
       }
 
       return {
         tipo: isPdf ? ('pdf' as const) : isImg ? ('imagen' as const) : ('pdf' as const),
-        url: src,
+        url: blobUrl || rawDataUrl,
+        rawDataUrl,
         origen: 'base64' as const,
       };
     }
@@ -68,8 +130,6 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
     // 2. Si tenemos URL de Google Drive
     if (factura.driveFileUrl && factura.driveFileUrl.startsWith('http')) {
       const driveUrl = factura.driveFileUrl;
-      // Extraer ID de archivo de Google Drive si es posible:
-      // Formatos: https://drive.google.com/file/d/FILE_ID/view?usp=drivesdk o id=FILE_ID
       const matchId =
         driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
         driveUrl.match(/id=([a-zA-Z0-9_-]+)/);
@@ -93,13 +153,15 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
       };
     }
 
-    // 3. Fallback: No hay binario ni drive embed directo -> Generar plantilla visual formal tipo factura PDF interactiva
+    // 3. Fallback: No hay binario ni drive embed directo -> Representación contable digital
     return {
       tipo: 'representacion_digital' as const,
       url: null,
       origen: 'digital' as const,
     };
-  }, [factura]);
+  }, [factura, blobUrl]);
+
+  if (!isOpen || !factura) return null;
 
   const handleZoomIn = () => setZoom((prev) => Math.min(200, prev + 15));
   const handleZoomOut = () => setZoom((prev) => Math.max(50, prev - 15));
@@ -161,19 +223,72 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
 
           {/* Action Tools and Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Selector de modo de vista */}
+            <div className="flex items-center bg-[#070b12] border border-slate-800 rounded-xl p-0.5 text-xs font-semibold">
+              <button
+                onClick={() => setVistaModo('documento')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  vistaModo === 'documento'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                }`}
+                title="Ver archivo original / PDF"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Documento</span>
+              </button>
+              <button
+                onClick={() => setVistaModo('resumen')}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  vistaModo === 'resumen'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                }`}
+                title="Ver representación contable estructurada"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Desglose</span>
+              </button>
+            </div>
+
+            {/* Descargar archivo si está disponible en base64 o Drive */}
+            {previewData.url && (
+              <a
+                href={previewData.url}
+                download={factura.archivoNombre || `${factura.idFactura}.pdf`}
+                className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                title="Descargar archivo"
+              >
+                <Download className="w-4 h-4" />
+              </a>
+            )}
+
+            {/* Abrir en pestaña nueva si hay Blob URL o enlace */}
+            {previewData.url && (
+              <a
+                href={previewData.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors hidden sm:flex"
+                title="Abrir en pestaña nueva"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+
             {/* Zoom Controls (para imágenes o representación) */}
             <div className="hidden md:flex items-center bg-[#070b12] border border-slate-800 rounded-xl p-0.5">
               <button
                 onClick={handleZoomOut}
                 disabled={zoom <= 50}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
                 title="Reducir zoom"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
               <button
                 onClick={handleResetZoom}
-                className="px-2 text-[11px] font-mono font-medium text-slate-300 hover:text-white"
+                className="px-2 text-[11px] font-mono font-medium text-slate-300 hover:text-white cursor-pointer"
                 title="Restablecer tamaño"
               >
                 {zoom}%
@@ -181,14 +296,14 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
               <button
                 onClick={handleZoomIn}
                 disabled={zoom >= 200}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
                 title="Aumentar zoom"
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
               <button
                 onClick={handleRotate}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border-l border-slate-800"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors border-l border-slate-800 cursor-pointer"
                 title="Girar 90°"
               >
                 <RotateCw className="w-4 h-4" />
@@ -198,7 +313,7 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
             {/* Alternar modo Pantalla Completa */}
             <button
               onClick={() => setPantallaCompleta(!pantallaCompleta)}
-              className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
               title={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
             >
               <Maximize2 className="w-4 h-4" />
@@ -233,7 +348,7 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row bg-[#080d17]">
           {/* Left / Main: Document Preview Canvas */}
           <div className="flex-1 h-full overflow-auto p-3 sm:p-5 flex flex-col items-center justify-center relative bg-slate-950/60 border-b lg:border-b-0 lg:border-r border-slate-800/80">
-            {previewData.tipo === 'drive_embed' && previewData.url ? (
+            {vistaModo === 'documento' && previewData.tipo === 'drive_embed' && previewData.url ? (
               <div className="w-full h-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800 relative flex flex-col">
                 <iframe
                   src={previewData.url}
@@ -256,20 +371,72 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
                   </a>
                 </div>
               </div>
-            ) : previewData.tipo === 'pdf' && previewData.url ? (
+            ) : vistaModo === 'documento' && previewData.tipo === 'pdf' && previewData.url && !iframeError ? (
               <div
-                className="w-full h-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-xl transition-transform duration-150 origin-center"
+                className="w-full h-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-xl transition-transform duration-150 origin-center relative flex flex-col"
                 style={{
                   transform: `scale(${zoom / 100}) rotate(${rotacion}deg)`,
                 }}
               >
-                <iframe
-                  src={`${previewData.url}#toolbar=1&navpanes=0&scrollbar=1`}
-                  className="w-full h-full border-0"
-                  title={`Visor PDF - ${factura.idFactura}`}
-                />
+                {/* Fallback bar in case embedded PDF fails */}
+                <div className="px-3 py-1.5 bg-[#0b101b] border-b border-slate-800 text-[11px] text-slate-400 flex items-center justify-between z-10 shrink-0">
+                  <span className="font-mono text-slate-300 truncate">
+                    {factura.archivoNombre || `${factura.idFactura}.pdf`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={previewData.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1 text-[11px]"
+                    >
+                      Pestaña nueva <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <button
+                      onClick={() => setVistaModo('resumen')}
+                      className="text-amber-400 hover:text-amber-300 hover:underline text-[11px] cursor-pointer"
+                    >
+                      Ver desglose
+                    </button>
+                  </div>
+                </div>
+
+                <object
+                  data={previewData.url}
+                  type="application/pdf"
+                  className="w-full h-full flex-1 border-0"
+                  onError={() => setIframeError(true)}
+                >
+                  <iframe
+                    src={`${previewData.url}#toolbar=1&navpanes=0&scrollbar=1`}
+                    className="w-full h-full border-0"
+                    title={`Visor PDF - ${factura.idFactura}`}
+                    onError={() => setIframeError(true)}
+                  >
+                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-300 space-y-3">
+                      <AlertCircle className="w-8 h-8 text-amber-400" />
+                      <p className="text-sm">El navegador no permite mostrar el visor PDF integrado en este contexto.</p>
+                      <div className="flex gap-2">
+                        <a
+                          href={previewData.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1"
+                        >
+                          Abrir PDF en pestaña <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        <button
+                          onClick={() => setVistaModo('resumen')}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                        >
+                          Ver Desglose Digital
+                        </button>
+                      </div>
+                    </div>
+                  </iframe>
+                </object>
               </div>
-            ) : previewData.tipo === 'imagen' && previewData.url ? (
+            ) : vistaModo === 'documento' && previewData.tipo === 'imagen' && previewData.url ? (
               <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
                 <img
                   src={previewData.url}

@@ -14,10 +14,23 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Initialize Google GenAI client (lazy/guarded)
+// Accepts either process.env.MY_GEMINI_API_KEY (custom secret) or process.env.GEMINI_API_KEY
 // Telemetry user-agent header is set to 'aistudio-build' as required
+function getGeminiApiKey(): string | null {
+  const customKey = process.env.MY_GEMINI_API_KEY?.trim();
+  if (customKey && customKey !== 'MY_GEMINI_API_KEY' && customKey.length > 5) {
+    return customKey;
+  }
+  const defaultKey = process.env.GEMINI_API_KEY?.trim();
+  if (defaultKey && defaultKey !== 'MY_GEMINI_API_KEY' && defaultKey.length > 5) {
+    return defaultKey;
+  }
+  return null;
+}
+
 function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
     return null;
   }
   return new GoogleGenAI({
@@ -53,7 +66,7 @@ const SHEETS_CONFIG = {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    geminiConfigured: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
+    geminiConfigured: !!getGeminiApiKey(),
     sheetsConfigured: !!SHEETS_CONFIG.sheetId || !!SHEETS_CONFIG.endpointUrl,
     timestamp: new Date().toISOString()
   });
@@ -73,8 +86,8 @@ app.post('/api/gemini/extract-invoice', async (req, res) => {
     // Si no hay clave de API configurada, advertir con claridad en lugar de falsear datos
     if (!ai) {
       return res.status(503).json({
-        error: 'No se ha configurado la clave GEMINI_API_KEY en el servidor.',
-        detail: 'Para procesar facturas reales mediante inteligencia artificial, asigna tu clave de API en los Ajustes del proyecto (Settings > Secrets). No se generarán facturas ficticias.',
+        error: 'No se ha detectado la clave de Gemini en el servidor (MY_GEMINI_API_KEY o GEMINI_API_KEY).',
+        detail: 'Asegúrate de haber guardado el valor de tu clave en el secreto de entorno en Settings > Secrets.',
         code: 'MISSING_API_KEY'
       });
     }
@@ -151,7 +164,7 @@ REGLAS OBLIGATORIAS:
     try {
       try {
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.8-flash',
           contents: { parts: [documentPart, textPart] },
           config: {
             systemInstruction: systemPrompt,
@@ -161,9 +174,9 @@ REGLAS OBLIGATORIAS:
         });
         parsedJson = JSON.parse(response.text || '{}');
       } catch (firstErr) {
-        // Reintento con gemini-2.5-flash-lite
+        // Reintento con gemini-3.5-flash-lite
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-lite',
+          model: 'gemini-3.5-flash-lite',
           contents: { parts: [documentPart, textPart] },
           config: {
             systemInstruction: systemPrompt,
@@ -283,7 +296,7 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
     let parsed: any = null;
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: promptText,
         config: {
           systemInstruction: systemPrompt,
@@ -463,7 +476,7 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
     let responseText = '';
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: contents,
         config: {
           systemInstruction: systemPrompt,
@@ -472,10 +485,10 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
       });
       responseText = response.text || '';
     } catch (modelErr: any) {
-      console.warn('Gemini 2.5 Flash busy, trying lite or fallback:', modelErr?.message);
+      console.warn('Gemini 3.8 Flash busy, trying lite or fallback:', modelErr?.message);
       try {
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-lite',
+          model: 'gemini-3.5-flash-lite',
           contents: contents,
           config: {
             systemInstruction: systemPrompt,
@@ -590,11 +603,15 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
     const endpointUrl = config?.endpointUrl || process.env.GOOGLE_SHEETS_ENDPOINT_URL;
     const driveFolderId = config?.driveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
 
+    // Extraer base64 de manera robusta
+    const base64Data = archivo?.base64Data || factura.archivoBase64;
+    const hasBase64 = Boolean(base64Data && base64Data.length > 50);
+    const mimeType = archivo?.mimeType || (nombreOriginal.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
     if (endpointUrl && endpointUrl.startsWith('http')) {
       try {
         console.log(`[Google Apps Script] Enviando factura ${factura.idFactura} a: ${endpointUrl}`);
-        const hasBase64 = Boolean(archivo?.base64Data && archivo.base64Data.length > 50);
-        console.log(`[Google Apps Script] ¿Contiene archivo binario para Drive? ${hasBase64 ? `Sí (${archivo?.base64Data?.length} caracteres)` : 'No'}`);
+        console.log(`[Google Apps Script] ¿Contiene archivo binario para Drive? ${hasBase64 ? `Sí (${base64Data?.length} caracteres)` : 'No'}`);
 
         const response = await fetch(endpointUrl, {
           method: 'POST',
@@ -609,9 +626,9 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
             idFactura: factura.idFactura,
             fechaEmision: factura.fechaEmision,
             archivo: hasBase64 ? {
-              base64: archivo!.base64Data,
-              nombre: nombreOriginal,
-              mimeType: archivo?.mimeType || 'application/pdf'
+              base64: base64Data,
+              nombre: driveFileNameCalculado,
+              mimeType: mimeType
             } : undefined,
             row: [
               nuevaFila.idFactura,
@@ -652,32 +669,54 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
           if (webhookResult && webhookResult.drive) {
             if (webhookResult.drive.success) {
               driveGuardado = true;
+              nuevaFila.driveGuardado = true;
               nuevaFila.driveFileUrl = webhookResult.drive.fileUrl;
               nuevaFila.driveFolderUrl = webhookResult.drive.carpetaProveedorUrl;
               nuevaFila.driveFileName = webhookResult.drive.fileName || driveFileNameCalculado;
               nuevaFila.driveFolderName = webhookResult.drive.carpetaProveedor || driveFolderNameCalculado;
               mensajeRespuesta = `Factura ${nuevaFila.idFactura} archivada en Google Drive (Carpeta "${nuevaFila.driveFolderName}") y anotada en Google Sheets`;
             } else {
+              driveGuardado = false;
+              nuevaFila.driveGuardado = false;
               driveError = webhookResult.drive.error || 'Error desconocido al crear la carpeta o archivo en Google Drive';
               mensajeRespuesta = `Factura registrada en Google Sheets, pero falló en Drive: ${driveError}`;
               console.error('[Google Apps Script Drive Error]', driveError);
             }
           } else if (webhookResult && webhookResult.status === 'success') {
-            mensajeRespuesta = `Factura ${nuevaFila.idFactura} guardada en Google Sheets`;
+            // El script respondió éxito pero no incluyó objeto 'drive' (Versión antigua desplegada)
+            driveGuardado = false;
+            nuevaFila.driveGuardado = false;
+            mensajeRespuesta = `Factura ${nuevaFila.idFactura} guardada en Google Sheets (pero no en Drive)`;
             if (!hasBase64) {
               driveError = 'No se adjuntó el archivo binario para subir a Drive';
+            } else {
+              driveError = 'Tu Web App de Google Apps Script está ejecutando una versión antigua (sin soporte para Google Drive). Ve a Configuración > Código Apps Script, pégalo en script.google.com y publica una "Nueva versión" en Implementar > Gestionar implementaciones.';
             }
+          } else if (webhookResult && webhookResult.status === 'error') {
+            driveGuardado = false;
+            nuevaFila.driveGuardado = false;
+            driveError = webhookResult.error || 'Error reportado por Google Apps Script';
+            mensajeRespuesta = `Error en Google Apps Script: ${driveError}`;
           }
         }
       } catch (err: any) {
         console.warn('Advertencia: No se pudo conectar con el endpoint de Apps Script:', err?.message || err);
+        driveGuardado = false;
+        nuevaFila.driveGuardado = false;
         driveError = `Fallo de conexión con Google Apps Script: ${err?.message || 'Error de red'}`;
         mensajeRespuesta = `Factura registrada en la app (Fallo al conectar con Google Apps Script)`;
       }
     } else {
+      driveGuardado = false;
+      nuevaFila.driveGuardado = false;
       driveError = 'No hay URL de Google Apps Script configurada en Configuración';
       mensajeRespuesta = `Factura registrada en la aplicación. (Nota: Google Drive no está configurado)`;
       console.log('[Google Drive] No configurado: endpointUrl está vacío');
+    }
+
+    nuevaFila.driveGuardado = driveGuardado;
+    if (driveError) {
+      nuevaFila.driveError = driveError;
     }
 
     nuevaFila.driveGuardado = driveGuardado;
@@ -786,16 +825,31 @@ app.get('/api/sheets/verify', async (req, res) => {
       // not json
     }
 
-    if (parsed && (parsed.status === 'success' || parsed.status === 'ignored')) {
+    if (parsed && parsed.status === 'success' && parsed.driveAuthorized !== undefined) {
       const drivePart = parsed.driveStatus ? ` (${parsed.driveStatus})` : '';
       return res.json({
         accessible: true,
         code: 'OK',
         sheetId,
         endpointUrl,
+        versionCorrecta: true,
+        driveAuthorized: parsed.driveAuthorized,
         mensaje: `Acceso verificado con éxito a Google Sheets y Google Drive${drivePart}`,
         driveStatus: parsed.driveStatus,
-        driveAuthorized: parsed.driveAuthorized,
+        detalles: parsed
+      });
+    }
+
+    // Si responde pero con ignored o sin soporte de Drive (script antiguo)
+    if (parsed && (parsed.status === 'ignored' || parsed.message === 'Fila insertada' || parsed.driveAuthorized === undefined)) {
+      return res.json({
+        accessible: true,
+        code: 'VERSION_DESACTUALIZADA',
+        sheetId,
+        endpointUrl,
+        versionCorrecta: false,
+        driveAuthorized: false,
+        mensaje: '⚠️ Tu Web App está activa pero ejecuta una VERSIÓN ANTIGUA del script (sin soporte para Google Drive). Debes copiar el código de "Código Apps Script" y publicar una "Nueva versión" en Implementar > Gestionar implementaciones.',
         detalles: parsed
       });
     }
@@ -805,6 +859,7 @@ app.get('/api/sheets/verify', async (req, res) => {
       code: 'RESPUESTA_DESCONOCIDA',
       sheetId,
       endpointUrl,
+      versionCorrecta: false,
       mensaje: 'El endpoint respondió pero con un formato inesperado.',
       preview: text.substring(0, 300)
     });
@@ -815,6 +870,94 @@ app.get('/api/sheets/verify', async (req, res) => {
       sheetId,
       endpointUrl,
       mensaje: error?.message || 'Error al intentar conectar con el endpoint de Google Apps Script.'
+    });
+  }
+});
+
+// Endpoint: Subir archivo de factura a Google Drive a posteriori
+app.post('/api/sheets/upload-to-drive', async (req, res) => {
+  try {
+    const { idFactura, config, archivo, nombreProveedor, fechaEmision } = req.body;
+    const endpointUrl = config?.endpointUrl || process.env.GOOGLE_SHEETS_ENDPOINT_URL;
+    const driveFolderId = config?.driveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID || '';
+
+    if (!endpointUrl || !endpointUrl.startsWith('http')) {
+      return res.status(400).json({
+        success: false,
+        error: 'No hay URL de Google Apps Script configurada.'
+      });
+    }
+
+    const base64Data = archivo?.base64Data || archivo?.base64;
+    if (!base64Data || base64Data.length < 50) {
+      return res.status(400).json({
+        success: false,
+        error: 'No se recibieron datos binarios del archivo para subir a Drive.'
+      });
+    }
+
+    const provCalculado = (nombreProveedor || 'Varios').trim();
+    const driveFileNameCalculado = `${idFactura} ${fechaEmision || new Date().toISOString().split('T')[0]}.pdf`;
+    const mimeType = archivo?.mimeType || 'application/pdf';
+
+    console.log(`[Upload to Drive] Subiendo archivo para factura ${idFactura} a Apps Script...`);
+
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      redirect: 'follow',
+      body: JSON.stringify({
+        action: 'saveToDrive',
+        tab: 'Facturas',
+        sheetId: config?.sheetId || process.env.GOOGLE_SHEETS_ID,
+        driveFolderId: driveFolderId,
+        nombreProveedor: provCalculado,
+        idFactura: idFactura,
+        fechaEmision: fechaEmision,
+        archivo: {
+          base64: base64Data,
+          nombre: driveFileNameCalculado,
+          mimeType: mimeType
+        }
+      })
+    });
+
+    const rawText = await response.text();
+    let result: any = null;
+    try {
+      result = JSON.parse(rawText);
+    } catch {
+      result = { status: 'error', raw: rawText.substring(0, 300) };
+    }
+
+    if (result && result.drive && result.drive.success) {
+      // Actualizar factura en memoria del servidor
+      const idx = serverFacturas.findIndex(f => f.idFactura === idFactura);
+      if (idx !== -1) {
+        serverFacturas[idx].driveGuardado = true;
+        serverFacturas[idx].driveFileUrl = result.drive.fileUrl;
+        serverFacturas[idx].driveFolderUrl = result.drive.carpetaProveedorUrl;
+        serverFacturas[idx].driveFileName = result.drive.fileName || driveFileNameCalculado;
+        serverFacturas[idx].driveFolderName = result.drive.carpetaProveedor || provCalculado;
+        serverFacturas[idx].driveError = undefined;
+      }
+
+      return res.json({
+        success: true,
+        drive: result.drive,
+        mensaje: `Factura ${idFactura} archivada con éxito en Google Drive`
+      });
+    } else {
+      const errMsg = result?.drive?.error || result?.error || (result?.status === 'ignored' ? 'Tu script desplegado es la versión antigua y no soporta Google Drive.' : 'Error al guardar en Drive');
+      return res.status(500).json({
+        success: false,
+        error: errMsg
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Error de conexión al subir a Drive'
     });
   }
 });
@@ -898,7 +1041,7 @@ function parseRawSheetRow(row: any[], index: number): any {
     driveFileUrl: driveFileUrl.startsWith('http') ? driveFileUrl : undefined,
     driveFileName: `${idFactura} ${fechaEmision}.pdf`,
     driveFolderName: nombreProveedor,
-    driveGuardado: true,
+    driveGuardado: Boolean(driveFileUrl && driveFileUrl.startsWith('http')),
     fuente: 'google_sheets'
   };
 }

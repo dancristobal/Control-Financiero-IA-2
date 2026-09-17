@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye, UploadCloud, Loader2 } from 'lucide-react';
 import { Factura } from '../types';
 
 interface FacturaDetalleModalProps {
@@ -7,6 +7,7 @@ interface FacturaDetalleModalProps {
   onClose: () => void;
   onDelete?: (factura: Factura) => void;
   onAbrirVisor?: (factura: Factura) => void;
+  onUploadToDrive?: (factura: Factura) => Promise<any> | void;
 }
 
 export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
@@ -14,8 +15,20 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
   onClose,
   onDelete,
   onAbrirVisor,
+  onUploadToDrive,
 }) => {
+  const [subiendoDrive, setSubiendoDrive] = useState(false);
   if (!factura) return null;
+
+  const handleSubirDrive = async () => {
+    if (!onUploadToDrive) return;
+    setSubiendoDrive(true);
+    try {
+      await onUploadToDrive(factura);
+    } finally {
+      setSubiendoDrive(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
@@ -251,22 +264,47 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
                     Abrir factura en Google Drive ↗
                   </a>
                 </div>
-              ) : onAbrirVisor ? (
-                <div className="pt-1 flex items-center justify-end text-xs">
-                  <button
-                    type="button"
-                    onClick={() => onAbrirVisor(factura)}
-                    className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Ver documento digital</span>
-                  </button>
+              ) : (
+                <div className="pt-2 space-y-2">
+                  {factura.driveError && (
+                    <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-300">
+                      <strong>Aviso Google Drive:</strong> {factura.driveError}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2">
+                    {onAbrirVisor && (
+                      <button
+                        type="button"
+                        onClick={() => onAbrirVisor(factura)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver documento digital</span>
+                      </button>
+                    )}
+                    {factura.archivoBase64 && onUploadToDrive && (
+                      <button
+                        type="button"
+                        onClick={handleSubirDrive}
+                        disabled={subiendoDrive}
+                        className="px-3 py-1 rounded-lg bg-sky-600/25 hover:bg-sky-600/40 text-sky-300 border border-sky-500/40 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {subiendoDrive ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                            <span>Subiendo a Drive...</span>
+                          </>
+                        ) : (
+                          <>
+                            <UploadCloud className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Archivar en Google Drive Ahora</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ) : factura.driveError ? (
-                <div className="p-2 rounded bg-amber-950/30 border border-amber-500/20 text-[11px] text-amber-300 mt-1">
-                  <strong>Aviso:</strong> {factura.driveError}
-                </div>
-              ) : null}
+              )}
             </div>
           </div>
 
