@@ -16,7 +16,7 @@ import {
   INITIAL_ALERTAS,
   INITIAL_ANALISIS_EJECUTIVO,
 } from './data/mockData';
-import { Factura, Proveedor, Alerta, AnalisisEjecutivo, GoogleSheetsConfig, GlobalLoadingState } from './types';
+import { Factura, Proveedor, Alerta, AnalisisEjecutivo, GoogleSheetsConfig, GlobalLoadingState, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from './types';
 import { GlobalLoadingBar } from './components/GlobalLoadingBar';
 import {
   MessageSquare,
@@ -136,6 +136,15 @@ export default function App() {
     }
   });
 
+  const [datosNegocio, setDatosNegocio] = useState<DatosNegocio>(() => {
+    try {
+      const saved = localStorage.getItem('fa_datos_negocio_v1');
+      return saved ? JSON.parse(saved) : DEFAULT_DATOS_NEGOCIO;
+    } catch {
+      return DEFAULT_DATOS_NEGOCIO;
+    }
+  });
+
   // Modals Visibility
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -174,6 +183,14 @@ export default function App() {
     }
   }, [sheetsConfig]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('fa_datos_negocio_v1', JSON.stringify(datosNegocio));
+    } catch (e) {
+      console.warn('Error al persistir datos de negocio en local', e);
+    }
+  }, [datosNegocio]);
+
   // Función para sincronizar y cargar exclusivamente los datos reales de la hoja "Facturas"
   const sincronizarFacturasHoja = async (
     forzarNotificacion = false
@@ -187,6 +204,7 @@ export default function App() {
       const response = await fetch('/api/sheets/fetch-invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           sheetId: sheetsConfig.sheetId,
           endpointUrl: sheetsConfig.endpointUrl,
@@ -231,7 +249,7 @@ export default function App() {
         }
         return { success: true, count: 0, message: msg };
       } else {
-        const msg = 'No se ha podido leer la hoja "Facturas" de Google Sheets.';
+        const msg = data.error || 'No se ha podido leer la hoja "Facturas" de Google Sheets.';
         if (forzarNotificacion) {
           setSyncToast({ tipo: 'error', mensaje: msg });
           setTimeout(() => setSyncToast(null), 5000);
@@ -239,7 +257,9 @@ export default function App() {
         return { success: false, count: 0, message: msg };
       }
     } catch (e: any) {
-      const msg = e?.message || 'Error de conexión al sincronizar con Google Sheets.';
+      const msg = e?.name === 'TimeoutError'
+        ? 'Tiempo de espera agotado al conectar con Google Sheets (timeout 15s).'
+        : (e?.message || 'Error de conexión al sincronizar con Google Sheets.');
       if (forzarNotificacion) {
         setSyncToast({ tipo: 'error', mensaje: msg });
         setTimeout(() => setSyncToast(null), 5000);
@@ -636,6 +656,7 @@ export default function App() {
         isChatOpen={isChatOpen}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        datosNegocio={datosNegocio}
       />
 
       {/* Main Content Area */}
@@ -643,8 +664,8 @@ export default function App() {
         {/* Top Header Bar */}
         <header className="h-16 px-4 sm:px-6 lg:px-8 border-b border-slate-800/80 bg-[#0a0f18]/90 backdrop-blur-md flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline">
-              Dulce Capricho
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline max-w-[200px] truncate" title={datosNegocio.nombre}>
+              {datosNegocio.nombre}
             </span>
             <span className="text-slate-600 hidden sm:inline">•</span>
             <span className="text-xs font-semibold text-rose-400 capitalize">
@@ -777,6 +798,7 @@ export default function App() {
               facturas={facturas}
               proveedores={proveedores}
               alertas={alertas}
+              datosNegocio={datosNegocio}
               onNavigate={setActiveTab}
               onOpenUpload={() => setActiveTab('facturas')}
               onOpenAnalysis={() => setActiveTab('analisis-ia')}
@@ -789,6 +811,7 @@ export default function App() {
               facturas={facturas}
               proveedores={proveedores}
               sheetsConfig={sheetsConfig}
+              datosNegocio={datosNegocio}
               onSaveFactura={handleSaveFactura}
               onDeleteFactura={handleDeleteFactura}
               onOpenConfig={() => setIsConfigOpen(true)}
@@ -802,6 +825,9 @@ export default function App() {
             <ProveedoresView
               proveedores={proveedores}
               facturas={facturas}
+              datosNegocio={datosNegocio}
+              onUploadToDrive={handleUploadToDrive}
+              onDeleteFactura={handleDeleteFactura}
             />
           )}
 
@@ -832,6 +858,7 @@ export default function App() {
               facturas={facturas}
               proveedores={proveedores}
               alertas={alertas}
+              datosNegocio={datosNegocio}
               onOpenPdfReport={() => setIsPdfReportOpen(true)}
               onUpdateAnalisis={setAnalisis}
             />
@@ -846,6 +873,7 @@ export default function App() {
         facturas={facturas}
         proveedores={proveedores}
         alertas={alertas}
+        datosNegocio={datosNegocio}
       />
 
       {/* 9-Page Printable Executive PDF Report */}
@@ -856,6 +884,7 @@ export default function App() {
         proveedores={proveedores}
         alertas={alertas}
         analisis={analisis}
+        datosNegocio={datosNegocio}
       />
 
       {/* Configuration & Google Sheets / Gemini Connections Modal */}
@@ -868,6 +897,8 @@ export default function App() {
         onSyncFacturas={() => sincronizarFacturasHoja(true)}
         theme={theme}
         onSetTheme={setTheme}
+        datosNegocio={datosNegocio}
+        onSaveDatosNegocio={setDatosNegocio}
       />
     </div>
   );

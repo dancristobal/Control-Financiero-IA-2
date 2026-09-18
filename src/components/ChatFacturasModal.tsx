@@ -12,7 +12,7 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
-import { MensajeChat, Factura, Proveedor, Alerta } from '../types';
+import { MensajeChat, Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
 interface ChatFacturasModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ interface ChatFacturasModalProps {
   facturas: Factura[];
   proveedores: Proveedor[];
   alertas: Alerta[];
+  datosNegocio?: DatosNegocio;
 }
 
 const PREGUNTAS_SUGERIDAS = [
@@ -37,16 +38,33 @@ export const ChatFacturasModal: React.FC<ChatFacturasModalProps> = ({
   facturas,
   proveedores,
   alertas,
+  datosNegocio,
 }) => {
-  const [mensajes, setMensajes] = useState<MensajeChat[]>([
+  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
+
+  const [mensajes, setMensajes] = useState<MensajeChat[]>(() => [
     {
       id: 'm-initial',
       emisor: 'asistente',
-      texto:
-        '¡Hola! Soy **Finance AI**, tu analista financiero en Dulce Capricho. Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?',
+      texto: `¡Hola! Soy **Finance AI**, tu analista financiero en ${nombreNegocio}. Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
       timestamp: new Date().toISOString(),
     },
   ]);
+
+  // Actualizar mensaje de bienvenida si cambia el nombre del negocio y solo hay 1 mensaje
+  useEffect(() => {
+    setMensajes((prev) => {
+      if (prev.length === 1 && prev[0].id === 'm-initial') {
+        return [
+          {
+            ...prev[0],
+            texto: `¡Hola! Soy **Finance AI**, tu analista financiero en ${nombreNegocio}. Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [nombreNegocio]);
 
   const [inputTexto, setInputTexto] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -83,6 +101,7 @@ export const ChatFacturasModal: React.FC<ChatFacturasModalProps> = ({
         body: JSON.stringify({
           mensaje: textoLimpio,
           historial: mensajes,
+          nombreNegocio,
           facturas,
           proveedores,
           alertas,

@@ -30,12 +30,13 @@ import {
   CartesianGrid,
   Legend
 } from 'recharts';
-import { Factura, Proveedor, Alerta } from '../types';
+import { Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
 interface ResumenViewProps {
   facturas: Factura[];
   proveedores: Proveedor[];
   alertas: Alerta[];
+  datosNegocio?: DatosNegocio;
   onNavigate: (tab: string) => void;
   onOpenUpload: () => void;
   onOpenAnalysis: () => void;
@@ -57,11 +58,13 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
   facturas,
   proveedores,
   alertas,
+  datosNegocio,
   onNavigate,
   onOpenUpload,
   onOpenAnalysis,
   onOpenPdfReport,
 }) => {
+  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
   const [periodo, setPeriodo] = useState<PeriodFilter>('ano');
   const [customStart, setCustomStart] = useState('2026-01-01');
   const [customEnd, setCustomEnd] = useState('2026-08-31');
@@ -204,8 +207,8 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 uppercase tracking-wider">
               Control Ejecutivo
             </span>
-            <span className="text-xs text-slate-300">
-              Obrador Central Dulce Capricho
+            <span className="text-xs text-slate-300 font-medium">
+              {nombreNegocio}
             </span>
           </div>
           <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-100 mt-1 tracking-tight">

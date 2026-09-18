@@ -173,3 +173,21 @@ export interface GlobalLoadingState {
   mensaje: string;
   progreso?: number;
 }
+
+export interface DatosNegocio {
+  nombre: string;
+  nif: string;
+  direccion: string;
+  actividad?: string;
+  email?: string;
+  telefono?: string;
+}
+
+export const DEFAULT_DATOS_NEGOCIO: DatosNegocio = {
+  nombre: 'Pastelería y Confitería Dulce Capricho S.L.',
+  nif: 'B-82910394',
+  direccion: 'C/ Mayor 24, Obrador Central',
+  actividad: 'Obrador y Confitería Artesanal',
+  email: 'administracion@dulcecapricho.com',
+  telefono: '+34 912 345 678',
+};

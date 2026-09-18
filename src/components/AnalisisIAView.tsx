@@ -15,13 +15,14 @@ import {
   ShieldCheck,
   RefreshCw
 } from 'lucide-react';
-import { AnalisisEjecutivo, Factura, Proveedor, Alerta, DesgloseIVA } from '../types';
+import { AnalisisEjecutivo, Factura, Proveedor, Alerta, DesgloseIVA, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
 interface AnalisisIAViewProps {
   analisis: AnalisisEjecutivo;
   facturas: Factura[];
   proveedores: Proveedor[];
   alertas: Alerta[];
+  datosNegocio?: DatosNegocio;
   onOpenPdfReport: () => void;
   onUpdateAnalisis: (nuevo: AnalisisEjecutivo) => void;
 }
@@ -31,10 +32,12 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
   facturas,
   proveedores,
   alertas,
+  datosNegocio,
   onOpenPdfReport,
   onUpdateAnalisis,
 }) => {
   const [loading, setLoading] = useState(false);
+  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
 
   const ejecutarAnalisisConGemini = async () => {
     setLoading(true);
@@ -43,6 +46,7 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          nombreNegocio,
           facturas,
           proveedores,
           alertas,
@@ -74,8 +78,8 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-rose-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
               Gemini Financial Intelligence
             </span>
-            <span className="text-xs text-slate-300">
-              Auditoría Ejecutiva de Dulce Capricho
+            <span className="text-xs text-slate-300 font-medium">
+              Auditoría Ejecutiva de {nombreNegocio}
             </span>
           </div>
           <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-100 mt-1 tracking-tight">
@@ -216,7 +220,7 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
           </h3>
         </div>
         <p className="text-xs text-slate-300">
-          Recomendaciones justificadas estrictamente en los datos de consumo de Dulce Capricho:
+          Recomendaciones justificadas estrictamente en los datos de consumo de {nombreNegocio}:
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">

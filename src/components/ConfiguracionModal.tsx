@@ -16,9 +16,10 @@ import {
   Loader2,
   Sun,
   Moon,
-  Palette
+  Palette,
+  Building2,
 } from 'lucide-react';
-import { GoogleSheetsConfig } from '../types';
+import { GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 import { ThemeMode } from '../utils/theme';
 
 interface ConfiguracionModalProps {
@@ -30,6 +31,8 @@ interface ConfiguracionModalProps {
   onSyncFacturas?: () => Promise<{ success: boolean; count: number; message?: string }>;
   theme?: ThemeMode;
   onSetTheme?: (theme: ThemeMode) => void;
+  datosNegocio?: DatosNegocio;
+  onSaveDatosNegocio?: (datos: DatosNegocio) => void;
 }
 
 export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
@@ -41,12 +44,28 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   onSyncFacturas,
   theme = 'dark',
   onSetTheme,
+  datosNegocio,
+  onSaveDatosNegocio,
 }) => {
   const [sheetId, setSheetId] = useState(config.sheetId || '');
   const [endpointUrl, setEndpointUrl] = useState(config.endpointUrl || '');
   const [driveFolderId, setDriveFolderId] = useState(config.driveFolderId || '');
+  const [negocio, setNegocio] = useState<DatosNegocio>(() => {
+    if (datosNegocio && datosNegocio.nombre) return datosNegocio;
+    try {
+      const saved = localStorage.getItem('fa_datos_negocio_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.nombre) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error al cargar datos negocio en config', e);
+    }
+    return DEFAULT_DATOS_NEGOCIO;
+  });
   const [copiado, setCopiado] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [guardadoExitosoNegocio, setGuardadoExitosoNegocio] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [resultadoSincronizacion, setResultadoSincronizacion] = useState<{
@@ -59,7 +78,7 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
     mensaje: string;
     code?: string;
   } | null>(null);
-  const [tabActiva, setTabActiva] = useState<'sheets' | 'gemini' | 'script' | 'apariencia'>('sheets');
+  const [tabActiva, setTabActiva] = useState<'negocio' | 'sheets' | 'gemini' | 'script' | 'apariencia'>('negocio');
 
   if (!isOpen) return null;
 
@@ -72,14 +91,18 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
         sheetId: sheetId.trim(),
         driveFolderId: driveFolderId.trim(),
       });
-      const res = await fetch(`/api/sheets/verify?${queryParams.toString()}`);
+      const res = await fetch(`/api/sheets/verify?${queryParams.toString()}`, {
+        signal: AbortSignal.timeout(25000),
+      });
       const data = await res.json();
       setResultadoVerificacion(data);
     } catch (e: any) {
       setResultadoVerificacion({
         accessible: false,
         code: 'ERROR',
-        mensaje: e?.message || 'Error de red al comprobar acceso con el servidor.',
+        mensaje: e?.name === 'TimeoutError'
+          ? 'Tiempo de espera agotado al verificar conexión (timeout 25s). Asegúrate de que la Web App en Apps Script tenga el acceso público configurado en "Cualquier usuario".'
+          : (e?.message || 'Error de red al comprobar acceso con el servidor.'),
       });
     } finally {
       setVerificando(false);
@@ -101,6 +124,7 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
         const res = await fetch('/api/sheets/fetch-invoices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(25000),
           body: JSON.stringify({ sheetId, endpointUrl }),
         });
         const data = await res.json();
@@ -109,14 +133,16 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
           count: data.count || 0,
           mensaje: data.count > 0
             ? `Se han cargado ${data.count} facturas reales desde la hoja "Facturas". Los datos de ejemplo se han reemplazado.`
-            : 'Conexión activa pero la hoja "Facturas" aún no contiene filas de datos.',
+            : (data.error || 'Conexión activa pero la hoja "Facturas" aún no contiene filas de datos.'),
         });
       }
     } catch (e: any) {
       setResultadoSincronizacion({
         success: false,
         count: 0,
-        mensaje: e?.message || 'Error al conectar con la hoja de Google Sheets.',
+        mensaje: e?.name === 'TimeoutError'
+          ? 'Tiempo de espera agotado al conectar con Google Sheets (timeout 25s).'
+          : (e?.message || 'Error al conectar con la hoja de Google Sheets.'),
       });
     } finally {
       setSincronizando(false);
@@ -125,6 +151,17 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
 
   const handleSave = () => {
     setGuardando(true);
+    
+    // Guardar datos del negocio
+    if (onSaveDatosNegocio) {
+      onSaveDatosNegocio(negocio);
+    }
+    try {
+      localStorage.setItem('fa_datos_negocio_v1', JSON.stringify(negocio));
+    } catch (e) {
+      console.warn('Error al guardar datos del negocio', e);
+    }
+
     onSaveConfig({
       sheetId: sheetId.trim(),
       endpointUrl: endpointUrl.trim(),
@@ -140,10 +177,26 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
     }, 400);
   };
 
+  const handleGuardarNegocioDirecto = () => {
+    if (onSaveDatosNegocio) {
+      onSaveDatosNegocio(negocio);
+    }
+    try {
+      localStorage.setItem('fa_datos_negocio_v1', JSON.stringify(negocio));
+    } catch (e) {
+      console.warn('Error al guardar datos del negocio', e);
+    }
+    setGuardadoExitosoNegocio(true);
+    setTimeout(() => setGuardadoExitosoNegocio(false), 2500);
+  };
+
+  const nombreEmpresaSeguro = (negocio.nombre || 'Mi Negocio').replace(/["\\]/g, '').trim();
+  const nombreCarpetaDrive = `Facturas ${nombreEmpresaSeguro}`;
+
   const appsScriptCode = `/**
  * FINANCE AI — Google Apps Script Web App
  * Sincronización de facturas en Google Sheets y archivado automático en Google Drive
- * para "Dulce Capricho"
+ * para "${nombreEmpresaSeguro}"
  */
 
 /**
@@ -154,8 +207,8 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
  */
 function autorizarPermisosDrive() {
   try {
-    var rootFolders = DriveApp.getFoldersByName("Facturas Dulce Capricho");
-    var folder = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("Facturas Dulce Capricho");
+    var rootFolders = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
+    var folder = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("${nombreCarpetaDrive}");
     Logger.log("✅ Permisos de Google Drive autorizados con éxito.");
     Logger.log("Carpeta principal disponible: " + folder.getName() + " (ID: " + folder.getId() + ")");
     return "OK: Permisos concedidos. Carpeta: " + folder.getName();
@@ -208,9 +261,9 @@ function doPost(e) {
           driveMsg = "Carpeta configurada de Drive: " + tf.getName();
           driveAuthorized = true;
         } else {
-          var rootFolders = DriveApp.getFoldersByName("Facturas Dulce Capricho");
-          var f = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("Facturas Dulce Capricho");
-          driveMsg = "Carpeta 'Facturas Dulce Capricho' verificada en tu Google Drive";
+          var rootFolders = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
+          var f = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("${nombreCarpetaDrive}");
+          driveMsg = "Carpeta '${nombreCarpetaDrive}' verificada en tu Google Drive";
           driveAuthorized = true;
         }
       } catch(fErr) {
@@ -232,7 +285,7 @@ function doPost(e) {
       sheet = ss.insertSheet(tabName);
       // Encabezados requeridos:
       sheet.appendRow([
-        "ID Factura", "Fecha de Emisión", "ID Proveedor", "Concepto",
+        "ID Factura", "Fecha de Emisión", "ID Proveedor", "Nombre proveedor", "Concepto",
         "Importe", "Fecha de Vencimiento", "Estado", "Fecha de Pago",
         "Base imponible", "Tipo/s de IVA", "Cuota IVA", "Total", "Categoría de gasto", "Enlace Google Drive"
       ]);
@@ -249,7 +302,7 @@ function doPost(e) {
       if (data.archivo && data.archivo.base64) {
         driveResult = guardarFacturaEnDrive({
           driveFolderId: data.driveFolderId,
-          nombreProveedor: data.nombreProveedor || (data.row ? data.row[2] : "Varios"),
+          nombreProveedor: data.nombreProveedor || (data.row ? data.row[3] : "Varios"),
           idFactura: data.idFactura || (data.row ? data.row[0] : "FAC"),
           fechaEmision: data.fechaEmision || (data.row ? data.row[1] : ""),
           archivo: data.archivo
@@ -290,8 +343,8 @@ function doPost(e) {
               var idRows = sDirect.getRange(2, 1, lr - 1, 1).getValues();
               for (var ri = 0; ri < idRows.length; ri++) {
                 if (String(idRows[ri][0] || "").trim().toLowerCase() === String(data.idFactura).trim().toLowerCase()) {
-                  // Columna 14 es "Enlace Google Drive"
-                  sDirect.getRange(ri + 2, 14).setValue(directDrive.fileUrl);
+                  // Columna 15 es "Enlace Google Drive"
+                  sDirect.getRange(ri + 2, 15).setValue(directDrive.fileUrl);
                   break;
                 }
               }
@@ -347,10 +400,10 @@ function guardarFacturaEnDrive(params) {
       }
     }
 
-    // Si no se proporcionó o no se encontró, buscar o crear la carpeta "Facturas Dulce Capricho"
+    // Si no se proporcionó o no se encontró, buscar o crear la carpeta "${nombreCarpetaDrive}"
     if (!carpetaPadre) {
-      var rootFolders = DriveApp.getFoldersByName("Facturas Dulce Capricho");
-      carpetaPadre = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("Facturas Dulce Capricho");
+      var rootFolders = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
+      carpetaPadre = rootFolders.hasNext() ? rootFolders.next() : DriveApp.createFolder("${nombreCarpetaDrive}");
     }
 
     // 1.- Tomar el nombre del proveedor de la factura
@@ -524,9 +577,13 @@ function eliminarFacturaDeDrive(idFactura, fileUrl, rawFolderId, nombreProveedor
     }
 
     try {
-      var dulceRoots = DriveApp.getFoldersByName("Facturas Dulce Capricho");
-      while (dulceRoots.hasNext()) {
-        protectedFolderIds[dulceRoots.next().getId()] = true;
+      var customRoots = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
+      while (customRoots.hasNext()) {
+        protectedFolderIds[customRoots.next().getId()] = true;
+      }
+      var legacyRoots = DriveApp.getFoldersByName("Facturas Dulce Capricho");
+      while (legacyRoots.hasNext()) {
+        protectedFolderIds[legacyRoots.next().getId()] = true;
       }
     } catch (e) {}
 
@@ -578,9 +635,13 @@ function eliminarFacturaDeDrive(idFactura, fileUrl, rawFolderId, nombreProveedor
         } catch(e) {}
       }
       try {
-        var rootFolders = DriveApp.getFoldersByName("Facturas Dulce Capricho");
+        var rootFolders = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
         while (rootFolders.hasNext()) {
           carpetas.push(rootFolders.next());
+        }
+        var legacyRoots2 = DriveApp.getFoldersByName("Facturas Dulce Capricho");
+        while (legacyRoots2.hasNext()) {
+          carpetas.push(legacyRoots2.next());
         }
       } catch(e) {}
 
@@ -650,8 +711,10 @@ function eliminarFacturaDeDrive(idFactura, fileUrl, rawFolderId, nombreProveedor
             if (cfId) allRoots.push(DriveApp.getFolderById(cfId));
           } catch(e) {}
         }
-        var dRoots = DriveApp.getFoldersByName("Facturas Dulce Capricho");
+        var dRoots = DriveApp.getFoldersByName("${nombreCarpetaDrive}");
         while (dRoots.hasNext()) allRoots.push(dRoots.next());
+        var dRootsLegacy = DriveApp.getFoldersByName("Facturas Dulce Capricho");
+        while (dRootsLegacy.hasNext()) allRoots.push(dRootsLegacy.next());
         
         for (var rIdx = 0; rIdx < allRoots.length; rIdx++) {
           var subs = allRoots[rIdx].getFolders();
@@ -678,7 +741,7 @@ function eliminarFacturaDeDrive(idFactura, fileUrl, rawFolderId, nombreProveedor
         processedFolderIds[fldId] = true;
 
         if (protectedFolderIds[fldId]) continue;
-        if (folder.getName() === "Facturas Dulce Capricho") continue;
+        if (folder.getName() === "${nombreCarpetaDrive}" || folder.getName() === "Facturas Dulce Capricho") continue;
 
         // Comprobar si tiene algún archivo activo
         var hasActiveFiles = false;
@@ -783,36 +846,48 @@ function handleGetFacturas(sheetId, tabName) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="w-full max-w-2xl bg-[#0f172a] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 sm:p-6 animate-in fade-in">
+      <div className="w-full max-w-3xl lg:max-w-4xl bg-[#0f172a] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh]">
         {/* Header */}
-        <div className="p-5 border-b border-slate-800 bg-[#111c30] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center">
+        <div className="px-6 py-5 border-b border-slate-800 bg-[#111c30] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center shrink-0">
               <Settings className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-100">
-                Configuración de Conexiones
+                Configuración General y Conexiones
               </h3>
               <p className="text-xs text-slate-400">
-                Google Sheets • Gemini API • Seguridad de Entorno
+                Datos de Empresa • Google Sheets & Drive • Gemini AI • Apariencia
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title="Cerrar"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tabs Bar */}
-        <div className="flex border-b border-slate-800 bg-[#0a0f18] text-xs font-semibold px-4 pt-2">
+        <div className="flex border-b border-slate-800 bg-[#0a0f18] text-xs font-semibold px-6 pt-2 overflow-x-auto shrink-0 gap-1">
+          <button
+            onClick={() => setTabActiva('negocio')}
+            className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+              tabActiva === 'negocio'
+                ? 'border-rose-500 text-rose-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Datos de Empresa</span>
+          </button>
           <button
             onClick={() => setTabActiva('sheets')}
-            className={`px-4 py-2.5 border-b-2 transition-colors ${
+            className={`px-4 py-3 border-b-2 transition-colors shrink-0 ${
               tabActiva === 'sheets'
                 ? 'border-rose-500 text-rose-400 font-bold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -822,7 +897,7 @@ function handleGetFacturas(sheetId, tabName) {
           </button>
           <button
             onClick={() => setTabActiva('script')}
-            className={`px-4 py-2.5 border-b-2 transition-colors ${
+            className={`px-4 py-3 border-b-2 transition-colors shrink-0 ${
               tabActiva === 'script'
                 ? 'border-rose-500 text-rose-400 font-bold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -832,7 +907,7 @@ function handleGetFacturas(sheetId, tabName) {
           </button>
           <button
             onClick={() => setTabActiva('gemini')}
-            className={`px-4 py-2.5 border-b-2 transition-colors ${
+            className={`px-4 py-3 border-b-2 transition-colors shrink-0 ${
               tabActiva === 'gemini'
                 ? 'border-rose-500 text-rose-400 font-bold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -842,7 +917,7 @@ function handleGetFacturas(sheetId, tabName) {
           </button>
           <button
             onClick={() => setTabActiva('apariencia')}
-            className={`px-4 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
+            className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
               tabActiva === 'apariencia'
                 ? 'border-rose-500 text-rose-400 font-bold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -854,7 +929,154 @@ function handleGetFacturas(sheetId, tabName) {
         </div>
 
         {/* Modal Content */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-300">
+        <div className="flex-1 min-h-0 p-6 overflow-y-auto space-y-5 text-xs text-slate-300">
+          {tabActiva === 'negocio' && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800 space-y-1.5">
+                <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                  <Building2 className="w-4 h-4" />
+                  <span>Datos Fiscales y de Identidad del Negocio</span>
+                </div>
+                <p className="text-slate-400 leading-relaxed text-[11px]">
+                  Configura la razón social, NIF y dirección de tu empresa. Estos datos se utilizarán dinámicamente como <strong>Cliente / Receptor</strong> en el visor de facturas, en los informes PDF y en las auditorías contables.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Nombre / Razón Social */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Nombre Comercial o Razón Social <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.nombre}
+                    onChange={(e) => setNegocio({ ...negocio, nombre: e.target.value })}
+                    placeholder="Ej. Pastelería y Confitería Dulce Capricho S.L."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* NIF / CIF */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    NIF / CIF <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.nif}
+                    onChange={(e) => setNegocio({ ...negocio, nif: e.target.value })}
+                    placeholder="Ej. B-82910394"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs font-mono focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* Actividad / Subtítulo */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Actividad / Subtítulo
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.actividad || ''}
+                    onChange={(e) => setNegocio({ ...negocio, actividad: e.target.value })}
+                    placeholder="Ej. Obrador y Confitería Artesanal"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* Dirección / Sede */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Dirección Fiscal / Sede <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.direccion}
+                    onChange={(e) => setNegocio({ ...negocio, direccion: e.target.value })}
+                    placeholder="Ej. C/ Mayor 24, Obrador Central"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* Email de administración */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Email de Administración
+                  </label>
+                  <input
+                    type="email"
+                    value={negocio.email || ''}
+                    onChange={(e) => setNegocio({ ...negocio, email: e.target.value })}
+                    placeholder="Ej. administracion@dulcecapricho.com"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* Teléfono */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300">
+                    Teléfono
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.telefono || ''}
+                    onChange={(e) => setNegocio({ ...negocio, telefono: e.target.value })}
+                    placeholder="Ej. +34 912 345 678"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Vista Previa en Vivo de la cabecera en el Visor */}
+              <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Vista Previa en el Visor de Facturas (Cliente / Receptor)
+                </div>
+                <div className="bg-slate-50 text-slate-900 rounded-lg p-3 border border-slate-200 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Cliente / Receptor
+                  </span>
+                  <p className="text-xs font-bold text-slate-900 mt-0.5">
+                    {negocio.nombre || '(Nombre de la empresa)'}
+                  </p>
+                  <p className="text-[11px] text-slate-600">
+                    {negocio.nif ? `NIF: ${negocio.nif}` : 'NIF: (NIF no definido)'}
+                    {negocio.direccion ? ` • ${negocio.direccion}` : ''}
+                  </p>
+                </div>
+              </div>
+
+              {/* Botón de guardado rápido de datos de empresa */}
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setNegocio(DEFAULT_DATOS_NEGOCIO)}
+                  className="text-[11px] text-slate-400 hover:text-slate-200 underline transition-colors"
+                >
+                  Restablecer valores originales
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGuardarNegocioDirecto}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-950/40 transition-colors"
+                >
+                  {guardadoExitosoNegocio ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>¡Guardado correctamente!</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Guardar Datos de Empresa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {tabActiva === 'sheets' && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800 space-y-2">
@@ -863,15 +1085,15 @@ function handleGetFacturas(sheetId, tabName) {
                   <span>Estructura de la Hoja de Google Sheets</span>
                 </div>
                 <p className="text-slate-400 leading-relaxed">
-                  Para enlazar con tu Google Sheet real de &quot;Dulce Capricho&quot;, la hoja debe tener
+                  Para enlazar con tu Google Sheet real de &quot;{negocio.nombre}&quot;, la hoja debe tener
                   dos pestañas con las columnas exactas:
                 </p>
                 <div className="space-y-1.5 pt-1 text-[11px]">
                   <div>
                     <strong className="text-slate-200 font-mono">Pestaña &quot;Facturas&quot;:</strong>{' '}
                     <span className="text-slate-400">
-                      ID Factura, Fecha de Emisión, ID Proveedor, Concepto, Importe, Fecha de Vencimiento,
-                      Estado, Fecha de Pago, Base imponible, Tipo/s de IVA, Cuota IVA, Total, Categoría de gasto
+                      ID Factura, Fecha de Emisión, ID Proveedor, Nombre proveedor, Concepto, Importe, Fecha de Vencimiento,
+                      Estado, Fecha de Pago, Base imponible, Tipo/s de IVA, Cuota IVA, Total, Categoría de gasto, Enlace Google Drive
                     </span>
                   </div>
                   <div>
@@ -1029,6 +1251,18 @@ function handleGetFacturas(sheetId, tabName) {
                             </button>
                           </div>
                         )}
+                        {!resultadoVerificacion.accessible && resultadoVerificacion.code !== 'VERSION_DESACTUALIZADA' && (
+                          <div className="mt-2.5 p-2.5 rounded-lg bg-rose-900/40 border border-rose-500/30 text-[11px] text-rose-200">
+                            <div className="font-semibold text-rose-100 mb-1">🛠️ Cómo solucionarlo en 30 segundos:</div>
+                            <ol className="list-decimal pl-4 space-y-1 text-rose-200/90 text-[10.5px]">
+                              <li>En tu editor de Google Apps Script, ve al botón azul superior <strong>&quot;Implementar&quot;</strong> &gt; <strong>&quot;Gestionar implementaciones&quot;</strong>.</li>
+                              <li>Haz clic en el icono del lápiz ✏️ (<strong>Editar</strong>).</li>
+                              <li>En el desplegable <strong>&quot;Quién tiene acceso&quot;</strong> (<em>Who has access</em>), selecciona <strong>&quot;Cualquier usuario&quot;</strong> (<em>Anyone</em>).</li>
+                              <li>En <strong>&quot;Versión&quot;</strong>, selecciona <strong>&quot;Nueva versión&quot;</strong> y pulsa <strong>&quot;Implementar&quot;</strong>.</li>
+                              <li>Vuelve aquí y pulsa nuevamente <strong>&quot;Verificar Conexión Ahora&quot;</strong>.</li>
+                            </ol>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1145,7 +1379,7 @@ function handleGetFacturas(sheetId, tabName) {
                   onClick={onResetData}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
                 >
-                  Restablecer Datos de Demostración Originales (Dulce Capricho)
+                  Restablecer Datos de Demostración Originales ({negocio.nombre})
                 </button>
               </div>
             </div>
@@ -1245,7 +1479,7 @@ function handleGetFacturas(sheetId, tabName) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-[#0d131f] flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-slate-800 bg-[#0d131f] flex items-center justify-between shrink-0">
           <div className="text-[11px] text-slate-500">
             Estado: {config.status === 'sincronizado' ? 'Conectado a Sheets' : 'Modo Demostración / Local'}
           </div>

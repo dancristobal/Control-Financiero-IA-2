@@ -434,7 +434,7 @@ export const INITIAL_ALERTAS: Alerta[] = [
     tipo: 'CONCENTRACIÓN DE PROVEEDOR',
     nivel: 'alta',
     titulo: 'Alta concentración en materias primas: Harinas del Sur (41.8%)',
-    descripcion: 'Harinas y Granos del Sur representa el 41.8% del gasto total acumulado en la categoría de Materias Primas de Dulce Capricho.',
+    descripcion: 'Harinas y Granos del Sur representa el 41.8% del gasto total acumulado en la categoría de Materias Primas del negocio.',
     fecha: '2026-08-28',
     estado: 'activa',
     datosRelacionados: {
@@ -477,48 +477,45 @@ export const INITIAL_ANALISIS_EJECUTIVO: AnalisisEjecutivo = {
   id: 'ANALISIS-ACTUAL',
   fechaGeneracion: '2026-08-28T10:30:00Z',
   estadoGeneral:
-    'Dulce Capricho presenta un volumen acumulado de 23.771,98 € en facturas registradas durante el ejercicio 2026, con una concentración prioritaria en Materias Primas (61,4%) y Suministros (18,2%). La liquidez operativa es estable, pero se observa una presión inflacionaria simultánea en harinas (+17,8%) y mantequillas (+20,3%) que erosiona el margen bruto si no se ajustan tarifas o se renegocian pedidos por volumen.',
+    'La empresa presenta un volumen de gasto consolidado según las facturas registradas en el sistema. La estructura de costes se distribuye entre las partidas operativas y suministros clave, requiriendo supervisión continua sobre las condiciones comerciales y los plazos de vencimiento.',
   principalesGastos: [
-    'Materias Primas: 14.599,20 € (Harinas, Mantequilla Cantabria, Chocolates e Ingredientes)',
-    'Suministros y Energía: 4.839,90 € (Electricidad industrial hornos y cámaras)',
-    'Envases y Packaging: 4.656,08 € (Cajas tarta kraft y bolsas ventana)',
-    'Logística y Transporte: 1.790,80 € (Transporte refrigerado B2B)'
+    'Materias Primas y Aprovisionamientos: Principal partida del gasto total registrado.',
+    'Suministros y Energía: Consumo operativo regular.',
+    'Envases y Embalajes: Material de packaging y distribución.',
+    'Logística y Servicios: Gestión operativa y portes.'
   ],
   cambiosImportantes: [
-    'Incremento acumulado en el saco de Harina de Fuerza de 18,50 € en enero a 21,80 € en agosto (+17,8%).',
-    'Escalada de precios en bloque de Mantequilla 82% 5kg desde 32,00 € a 38,50 € (+20,3%).',
-    'Revisión al alza en packaging kraft (+24,4%) debido a costes de celulosa.'
+    'Seguimiento de variaciones en precios unitarios en suministradores frecuentes.',
+    'Monitoreo de costes de aprovisionamiento según el volumen contratado.'
   ],
   alertas: [
-    '1 Factura vencida no atendida (FAC-2026-064 con Frío Express por 1.790,80 €) con riesgo de interrupción de servicio logístico.',
-    'Concentración del 41,8% del aprovisionamiento crítico en un único molino harinero.',
-    'Presión sobre márgenes en las referencias de hojaldre y bollería fina.'
+    'Control de facturas con vencimiento próximo o superado.',
+    'Seguimiento de la concentración de compras en proveedores principales.'
   ],
   oportunidadesAhorro: [
-    'Contrato marco anual o compra por palet completo en Harinas del Sur con descuento por volumen del 6-8%.',
-    'Homologar un proveedor secundario de mantequilla y derivados lácteos para mitigar el riesgo de Cantabria.',
-    'Estandarización de referencias de packaging para reducir costes unitarios en pedidos de mayor tirada.'
+    'Negociar acuerdos de rappel o descuento por volumen con los proveedores de mayor facturación.',
+    'Optimizar la agrupación de pedidos y la periodicidad de aprovisionamiento.'
   ],
   tresAcciones: [
     {
-      accion: 'Regularizar de inmediato el pago de la factura vencida FAC-2026-064',
-      motivo: 'Evitar sobrecostes por morosidad o bloqueo de rutas refrigeradas para eventos clave de fin de semana.',
-      datos: 'Importe 1.790,80 €, vencida desde 02/07/2026 con Frío Express Logística.',
+      accion: 'Conciliar facturas pendientes y vencidas en contabilidad',
+      motivo: 'Garantizar la continuidad del servicio y evitar recargos o demoras comerciales.',
+      datos: 'Facturas registradas en el sistema.',
       impacto: 'Inmediato'
     },
     {
-      accion: 'Renegociar tarifa cerrada a 6 meses con Harinas y Granos del Sur',
-      motivo: 'Frenar la subida del 17,8% mediante compromiso de volumen semanal garantizado para todo el obrador.',
-      datos: 'El gasto mensual supera los 4.600 € y representa más del 40% del coste de materia prima.',
+      accion: 'Revisar condiciones y contratos marco con proveedores estratégicos',
+      motivo: 'Asegurar precios competitivos en las partidas de mayor peso presupuestario.',
+      datos: 'Concentración de gasto en proveedores principales.',
       impacto: 'Alto'
     },
     {
-      accion: 'Actualizar escandallo y precios de venta en pastelería con alto contenido en mantequilla',
-      motivo: 'La mantequilla ha superado los 7,70 €/kg en bloque (+20,3%), reduciendo el margen de contribución.',
-      datos: 'Consumo quincenal de 35 a 40 bloques de 5kg por ciclo de producción.',
-      impacto: 'Alto'
+      accion: 'Auditar costes unitarios y referencias frecuentes',
+      motivo: 'Proteger los márgenes operativos frente a oscilaciones de mercado.',
+      datos: 'Líneas de facturas registradas.',
+      impacto: 'Medio'
     }
   ],
   prioridadSemana:
-    'Resolver la factura vencida de Frío Express y cerrar con Harinas del Sur un precio cerrado para el último cuatrimestre antes de la campaña de otoño/Navidad.'
+    'Revisar las facturas pendientes de pago y consolidar acuerdos comerciales con los suministradores de mayor volumen.'
 };

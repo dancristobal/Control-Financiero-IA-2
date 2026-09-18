@@ -16,7 +16,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import { GoogleSheetsConfig } from '../types';
+import { GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 import { ThemeMode } from '../utils/theme';
 
 interface SidebarProps {
@@ -30,6 +30,7 @@ interface SidebarProps {
   isChatOpen: boolean;
   theme?: ThemeMode;
   onToggleTheme?: () => void;
+  datosNegocio?: DatosNegocio;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,7 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isChatOpen,
   theme = 'dark',
   onToggleTheme,
+  datosNegocio,
 }) => {
+  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
   const menuItems = [
     { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
     { id: 'facturas', label: 'Facturas', icon: FileText, badge: facturasCount },
@@ -68,10 +71,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 FINANCE AI
               </h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xs font-semibold text-rose-400 tracking-wider">
-                  Dulce Capricho
+                <span className="text-xs font-semibold text-rose-400 tracking-wider truncate max-w-[140px]" title={nombreNegocio}>
+                  {nombreNegocio}
                 </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
               </div>
             </div>
           </div>

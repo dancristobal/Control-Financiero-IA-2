@@ -72,16 +72,169 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Helper function to calculate fully dynamic, grounded executive analysis from real data
+function generateGroundedExecutiveAnalysis(
+  facturas: any[] = [],
+  proveedores: any[] = [],
+  alertas: any[] = [],
+  resumenIVA: any = {},
+  nombreNegocio: string = 'La Empresa'
+) {
+  const safeFacturas = Array.isArray(facturas) ? facturas : [];
+  const safeProveedores = Array.isArray(proveedores) ? proveedores : [];
+  const safeAlertas = Array.isArray(alertas) ? alertas : [];
+
+  const totalGasto = safeFacturas.reduce((acc, f) => acc + (Number(f.total) || 0), 0);
+  const totalBase = safeFacturas.reduce((acc, f) => acc + (Number(f.baseImponible) || 0), 0);
+  const facturasCount = safeFacturas.length;
+
+  // Category breakdown
+  const catMap: Record<string, number> = {};
+  safeFacturas.forEach((f) => {
+    const cat = f.categoriaGasto || 'Gastos Operativos';
+    catMap[cat] = (catMap[cat] || 0) + (Number(f.total) || 0);
+  });
+  const sortedCategories = Object.entries(catMap)
+    .map(([nombre, total]) => ({
+      nombre,
+      total,
+      porcentaje: totalGasto > 0 ? (total / totalGasto) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // Supplier breakdown
+  const provMap: Record<string, { nombre: string; total: number; count: number }> = {};
+  safeFacturas.forEach((f) => {
+    const pId = f.idProveedor || f.nombreProveedor || 'PROV-GENERIC';
+    const pNom = f.nombreProveedor || pId;
+    if (!provMap[pId]) {
+      provMap[pId] = { nombre: pNom, total: 0, count: 0 };
+    }
+    provMap[pId].total += Number(f.total) || 0;
+    provMap[pId].count += 1;
+  });
+  const sortedSuppliers = Object.values(provMap)
+    .map((p) => ({
+      ...p,
+      porcentaje: totalGasto > 0 ? (p.total / totalGasto) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // Invoice status
+  const facturasVencidas = safeFacturas.filter((f) => f.estado === 'Vencida');
+  const facturasPendientes = safeFacturas.filter((f) => f.estado === 'Pendiente');
+  const totalVencido = facturasVencidas.reduce((sum, f) => sum + (Number(f.total) || 0), 0);
+  const totalPendiente = facturasPendientes.reduce((sum, f) => sum + (Number(f.total) || 0), 0);
+
+  const topCat = sortedCategories[0] || { nombre: 'Gastos Generales', total: totalGasto, porcentaje: 100 };
+  const topProv = sortedSuppliers[0] || { nombre: 'Proveedor Principal', total: totalGasto, porcentaje: 100, count: 1 };
+
+  // Generate grounded summary
+  const estadoGeneral = facturasCount > 0
+    ? `${nombreNegocio} registra un volumen acumulado de ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € distribuidos en ${facturasCount} facturas. La partida con mayor concentración es "${topCat.nombre}" (${topCat.porcentaje.toFixed(1)}% del gasto total). La relación de compras muestra a ${topProv.nombre} como principal receptor del presupuesto operativo.`
+    : `${nombreNegocio} no dispone de facturas suficientes registradas para emitir un balance consolidado. Se recomienda registrar facturas de proveedores para activar el análisis continuo.`;
+
+  // Principales gastos
+  const principalesGastos = sortedCategories.length > 0
+    ? sortedCategories.slice(0, 4).map((c) => `${c.nombre}: ${c.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € (${c.porcentaje.toFixed(1)}% del total registrado)`)
+    : ['Sin partidas registradas todavía en el periodo actual.'];
+
+  // Cambios y variaciones
+  const cambiosImportantes: string[] = [];
+  const alertasPrecio = safeAlertas.filter((a) => a.tipo === 'SUBIDA DE PRECIO' || a.tipo === 'ANOMALIA');
+  if (alertasPrecio.length > 0) {
+    alertasPrecio.slice(0, 3).forEach((a) => {
+      cambiosImportantes.push(`${a.proveedor || a.titulo}: ${a.descripcion}`);
+    });
+  } else if (sortedSuppliers.length > 0) {
+    cambiosImportantes.push(`Concentración del gasto en ${topProv.nombre} alcanzando el ${topProv.porcentaje.toFixed(1)}% del presupuesto.`);
+    if (sortedSuppliers.length > 1) {
+      cambiosImportantes.push(`Segundo proveedor en volumen: ${sortedSuppliers[1].nombre} con ${sortedSuppliers[1].total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
+    }
+  } else {
+    cambiosImportantes.push('Evolución de costes estable según las facturas computadas.');
+  }
+
+  // Alertas
+  const alertasGeneradas: string[] = [];
+  if (facturasVencidas.length > 0) {
+    alertasGeneradas.push(`${facturasVencidas.length} factura(s) vencida(s) pendiente(s) de regularizar por un total de ${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
+  }
+  if (topProv.porcentaje > 35 && sortedSuppliers.length > 1) {
+    alertasGeneradas.push(`Dependencia operativa elevada en ${topProv.nombre} (${topProv.porcentaje.toFixed(1)}% de las compras).`);
+  }
+  if (facturasPendientes.length > 0) {
+    alertasGeneradas.push(`${facturasPendientes.length} factura(s) pendiente(s) de pago con vencimiento programado (${totalPendiente.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`);
+  }
+  if (alertasGeneradas.length === 0) {
+    alertasGeneradas.push('No se detectan incidencias críticas ni vencimientos superados en la cartera actual.');
+  }
+
+  // Oportunidades de ahorro
+  const oportunidadesAhorro: string[] = [];
+  if (sortedSuppliers.length > 0) {
+    oportunidadesAhorro.push(`Negociar acuerdo de rappel o descuento por volumen con ${topProv.nombre} sobre el volumen de ${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
+  }
+  if (sortedCategories.length > 1) {
+    oportunidadesAhorro.push(`Revisar y contrastar tarifas en la categoría de "${sortedCategories[0].nombre}" para diversificar compras.`);
+  }
+  oportunidadesAhorro.push('Agrupar pagos y aprovisionamientos quincenales para optimizar costes de portes y gestión administrativa.');
+
+  // 3 Acciones recomendadas
+  const tresAcciones = [
+    {
+      accion: facturasVencidas.length > 0
+        ? `Regularizar las ${facturasVencidas.length} facturas vencidas (${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €)`
+        : `Revisar el calendario de vencimiento de las ${facturasPendientes.length} facturas pendientes`,
+      motivo: 'Evitar posibles recargos comerciales e interrupciones en la cadena de aprovisionamiento.',
+      datos: facturasVencidas.length > 0
+        ? `Facturas: ${facturasVencidas.map((f) => f.idFactura).slice(0, 3).join(', ')}`
+        : `Importe pendiente: ${totalPendiente.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
+      impacto: 'Inmediato',
+    },
+    {
+      accion: `Negociar condiciones marco con ${topProv.nombre}`,
+      motivo: `Concentra el ${topProv.porcentaje.toFixed(1)}% del presupuesto total (${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`,
+      datos: `${topProv.count} facturas emitidas por este proveedor`,
+      impacto: 'Alto',
+    },
+    {
+      accion: `Auditar costes unitarios en la categoría "${topCat.nombre}"`,
+      motivo: 'Controlar el margen operativo frente a posibles subidas de precios en el mercado.',
+      datos: `Partida que representa ${topCat.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
+      impacto: 'Medio',
+    },
+  ];
+
+  // Prioridad semana
+  const prioridadSemana = facturasVencidas.length > 0
+    ? `Regularizar con urgencia las ${facturasVencidas.length} factura(s) con vencimiento superado (${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`
+    : `Revisar condiciones comerciales y precios con el proveedor principal (${topProv.nombre}).`;
+
+  return {
+    id: `ANALISIS-${Date.now()}`,
+    fechaGeneracion: new Date().toISOString(),
+    estadoGeneral,
+    principalesGastos,
+    cambiosImportantes,
+    alertas: alertasGeneradas,
+    oportunidadesAhorro,
+    tresAcciones,
+    prioridadSemana,
+  };
+}
+
 // Endpoint: Extraer datos de factura con Gemini
 app.post('/api/gemini/extract-invoice', async (req, res) => {
   try {
-    const { fileData, mimeType, fileName, existingSuppliers } = req.body;
+    const { fileData, mimeType, fileName, existingSuppliers, nombreNegocio } = req.body;
 
     if (!fileData) {
       return res.status(400).json({ error: 'No se ha proporcionado el archivo de factura.' });
     }
 
     const ai = getGeminiClient();
+    const empresa = nombreNegocio || 'la empresa receptora';
 
     // Si no hay clave de API configurada, advertir con claridad en lugar de falsear datos
     if (!ai) {
@@ -93,12 +246,12 @@ app.post('/api/gemini/extract-invoice', async (req, res) => {
     }
 
     // Prompt estricto para extracción fiel mediante Gemini
-    const systemPrompt = `Eres un auditor contable y analista financiero especializado en empresas de hostelería y obradores de confitería como "Dulce Capricho".
+    const systemPrompt = `Eres un auditor contable y analista financiero especializado en empresas y comercios para "${empresa}".
 Tu misión es extraer con precisión matemática y fidelidad absoluta todos los datos de la factura adjunta.
 
 REGLAS OBLIGATORIAS:
 1. No inventar datos. Si un campo no existe en el documento, escribe exactamente: "Pendiente de confirmar".
-2. Mantener exactamente el nombre del producto si aparece en las líneas (ej: "Harina de fuerza 25 kg", "Mantequilla artesanal 82% 5kg", etc.).
+2. Mantener exactamente el nombre del producto o servicio si aparece en las líneas.
 3. Extraer los importes numéricos en euros sin símbolos de moneda.
 4. Tipo de IVA: Extraer el porcentaje exacto (ej: '21%', '10%', '4%', o '10% y 21%').
 5. Categoría de gasto debe ser una de: "Materias Primas", "Envases y Embalajes", "Suministros y Energía", "Logística y Transporte", "Mantenimiento y Maquinaria", "Servicios y Gestión".
@@ -164,7 +317,7 @@ REGLAS OBLIGATORIAS:
     try {
       try {
         const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-3.5-flash',
           contents: { parts: [documentPart, textPart] },
           config: {
             systemInstruction: systemPrompt,
@@ -173,10 +326,10 @@ REGLAS OBLIGATORIAS:
           }
         });
         parsedJson = JSON.parse(response.text || '{}');
-      } catch (firstErr) {
-        // Reintento con gemini-3.5-flash-lite
+      } catch (firstErr: any) {
+        console.warn('Gemini 3.8 Flash busy on invoice extraction, retrying with gemini-3.1-flash-lite:', firstErr?.message);
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-3.5-flash-lite',
+          model: 'gemini-3.1-flash-lite',
           contents: { parts: [documentPart, textPart] },
           config: {
             systemInstruction: systemPrompt,
@@ -190,15 +343,18 @@ REGLAS OBLIGATORIAS:
       console.error('Error al invocar la API de Gemini para extraer factura:', apiErr);
       const isQuota = apiErr?.message?.includes('429') || apiErr?.message?.includes('quota') || apiErr?.message?.includes('RESOURCE_EXHAUSTED');
       const isKeyInvalid = apiErr?.message?.includes('API_KEY_INVALID') || apiErr?.message?.includes('403');
+      const isUnavailable = apiErr?.message?.includes('503') || apiErr?.message?.includes('UNAVAILABLE');
       
-      return res.status(502).json({
+      return res.status(isUnavailable ? 503 : 502).json({
         error: isQuota
           ? 'Límite de cuota excedido temporalmente en Gemini API.'
           : isKeyInvalid
           ? 'La clave GEMINI_API_KEY no es válida o carece de permisos.'
+          : isUnavailable
+          ? 'Los servidores de Gemini están experimentando alta demanda temporal. Por favor inténtalo de nuevo en unos momentos.'
           : 'No se pudo leer la factura con Gemini AI.',
         detail: apiErr?.message || 'Error durante la lectura del documento.',
-        code: isQuota ? 'QUOTA_EXCEEDED' : isKeyInvalid ? 'INVALID_KEY' : 'EXTRACTION_FAILED'
+        code: isQuota ? 'QUOTA_EXCEEDED' : isKeyInvalid ? 'INVALID_KEY' : isUnavailable ? 'MODEL_BUSY' : 'EXTRACTION_FAILED'
       });
     }
 
@@ -229,182 +385,165 @@ REGLAS OBLIGATORIAS:
 // Endpoint: Análisis Ejecutivo con Gemini
 app.post('/api/gemini/analisis-ejecutivo', async (req, res) => {
   try {
-    const { facturas, proveedores, alertas, resumenIVA } = req.body;
+    const { facturas, proveedores, alertas, resumenIVA, nombreNegocio, datosNegocio } = req.body;
+    const empresa = nombreNegocio || datosNegocio?.nombre || 'La Empresa';
     const ai = getGeminiClient();
 
     if (!ai) {
-      // Fallback con datos calculados de alta calidad
-      const fallbackAnalisis = {
-        id: `ANALISIS-${Date.now()}`,
-        fechaGeneracion: new Date().toISOString(),
-        estadoGeneral:
-          'Dulce Capricho mantiene un nivel de operaciones constante con una cartera consolidada de proveedores en materias primas y packaging. Se identifican tensiones en precios unitarios de harinas y grasas lácteas que requieren intervención para preservar el margen operativo.',
-        principalesGastos: [
-          'Materias Primas: Insumos clave concentran más del 60% del gasto total registrado.',
-          'Energía y Hornos: Consumo mensual elevado con estabilidad de tarifas industriales.',
-          'Envases y Packaging: Incremento de costes por embalaje kraft para pastelería premium.'
-        ],
-        cambiosImportantes: [
-          'Aumento acumulado superior al 15% en harinas de gran fuerza desde el primer trimestre.',
-          'Coste de mantequilla artesanal en máximos anuales con repercusión en la producción de hojaldres.'
-        ],
-        alertas: [
-          'Seguimiento prioritario de facturas con fecha de vencimiento superada.',
-          'Riesgo de dependencia moderada en el proveedor principal de harinas.'
-        ],
-        oportunidadesAhorro: [
-          'Agrupación de compras quincenales en mensuales para obtener rappel del 5%.',
-          'Contraste de precios en referencias estándar de cartonaje y bolsas biodegradables.'
-        ],
-        tresAcciones: [
-          {
-            accion: 'Conciliar facturas pendientes y vencidas en contabilidad',
-            motivo: 'Evitar interrupciones de suministro logístico y recargos comerciales.',
-            datos: 'Facturas pendientes registradas en el sistema.',
-            impacto: 'Inmediato'
-          },
-          {
-            accion: 'Solicitar oferta comparativa para materias primas secundarias',
-            motivo: 'Diversificar proveedores y disponer de margen de negociación.',
-            datos: 'Alta concentración en PROV-001 y PROV-002.',
-            impacto: 'Alto'
-          },
-          {
-            accion: 'Auditar precios unitarios de envases kraft',
-            motivo: 'El coste unitario ha escalado por encima de la media de mercado.',
-            datos: 'Variación detectada en cajas para tarta 25x25.',
-            impacto: 'Medio'
-          }
-        ],
-        prioridadSemana: 'Negociar volumen y condiciones de pago antes del próximo aprovisionamiento mensual.'
-      };
+      // Fallback con datos calculados matemáticamente de las facturas reales
+      const fallbackAnalisis = generateGroundedExecutiveAnalysis(
+        facturas,
+        proveedores,
+        alertas,
+        resumenIVA,
+        empresa
+      );
       return res.json({ analisis: fallbackAnalisis, simulated: true });
     }
 
-    const systemPrompt = `Eres el Director Financiero (CFO) consultor de "Dulce Capricho", un obrador de alta pastelería y confitería.
+    const systemPrompt = `Eres el Director Financiero (CFO) consultor de "${empresa}".
 Debes realizar un análisis ejecutivo exhaustivo con los datos financieros reales proporcionados.
-No te limites a resumir cifras numéricas. Encuentra tendencias, anomalías, aumentos, riesgos, concentración de gasto y oportunidades reales de revisión.
-No afirmes un ahorro económico concreto sin datos suficientes.
+No te limites a resumir cifras numéricas. Encuentra tendencias, anomalías, aumentos, riesgos, concentración de gasto y oportunidades reales de revisión basadas exclusivamente en las facturas y proveedores recibidos.
+No inventes productos ni empresas que no aparezcan en los datos.
 Genera el resultado en formato JSON estricto.`;
 
-    const promptText = `Analiza los siguientes datos registrados de Dulce Capricho:
-FACTURAS (${facturas?.length || 0}): ${JSON.stringify(facturas?.slice(0, 30) || [])}
+    const promptText = `Analiza los siguientes datos registrados de "${empresa}":
+FACTURAS (${facturas?.length || 0}): ${JSON.stringify(facturas?.slice(0, 35) || [])}
 PROVEEDORES (${proveedores?.length || 0}): ${JSON.stringify(proveedores || [])}
 ALERTAS: ${JSON.stringify(alertas || [])}
 RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
 
     let parsed: any = null;
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: promptText,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              estadoGeneral: { type: Type.STRING, description: 'Estado general del negocio (máximo 5 líneas concisas)' },
-              principalesGastos: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Principales áreas y conceptos de gasto detectados'
-              },
-              cambiosImportantes: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Variaciones relevantes y cambios respecto a periodos anteriores'
-              },
-              alertas: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Alertas financieras, de riesgo o proveedores'
-              },
-              oportunidadesAhorro: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Oportunidades de ahorro o revisión fundadas en los datos'
-              },
-              tresAcciones: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    accion: { type: Type.STRING, description: 'Acción específica a ejecutar' },
-                    motivo: { type: Type.STRING, description: 'Motivo o justificación empresarial' },
-                    datos: { type: Type.STRING, description: 'Datos concretos que la justifican' },
-                    impacto: { type: Type.STRING, description: 'Inmediato, Alto o Medio' }
-                  },
-                  required: ['accion', 'motivo', 'datos', 'impacto']
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: promptText,
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                estadoGeneral: { type: Type.STRING, description: 'Estado general del negocio (máximo 5 líneas concisas)' },
+                principalesGastos: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Principales áreas y conceptos de gasto detectados'
                 },
-                description: 'Exactamente 3 acciones recomendadas ordenadas por impacto'
+                cambiosImportantes: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Variaciones relevantes y cambios respecto a periodos anteriores'
+                },
+                alertas: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Alertas financieras, de riesgo o proveedores'
+                },
+                oportunidadesAhorro: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: 'Oportunidades de ahorro o revisión fundadas en los datos'
+                },
+                tresAcciones: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      accion: { type: Type.STRING, description: 'Acción específica a ejecutar' },
+                      motivo: { type: Type.STRING, description: 'Motivo o justificación empresarial' },
+                      datos: { type: Type.STRING, description: 'Datos concretos que la justifican' },
+                      impacto: { type: Type.STRING, description: 'Inmediato, Alto o Medio' }
+                    },
+                    required: ['accion', 'motivo', 'datos', 'impacto']
+                  },
+                  description: 'Exactamente 3 acciones recomendadas ordenadas por impacto'
+                },
+                prioridadSemana: {
+                  type: Type.STRING,
+                  description: 'Si solo pudieras revisar una sola cosa esta semana...'
+                }
               },
-              prioridadSemana: {
-                type: Type.STRING,
-                description: 'Si solo pudieras revisar una sola cosa esta semana...'
-              }
-            },
-            required: [
-              'estadoGeneral',
-              'principalesGastos',
-              'cambiosImportantes',
-              'alertas',
-              'oportunidadesAhorro',
-              'tresAcciones',
-              'prioridadSemana'
-            ]
+              required: [
+                'estadoGeneral',
+                'principalesGastos',
+                'cambiosImportantes',
+                'alertas',
+                'oportunidadesAhorro',
+                'tresAcciones',
+                'prioridadSemana'
+              ]
+            }
           }
-        }
-      });
-      parsed = JSON.parse(response.text || '{}');
+        });
+        parsed = JSON.parse(response.text || '{}');
+      } catch (firstErr: any) {
+        console.warn('Gemini 3.8 Flash busy on executive analysis, retrying with gemini-3.1-flash-lite:', firstErr?.message);
+        const retryResponse = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: promptText,
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                estadoGeneral: { type: Type.STRING },
+                principalesGastos: { type: Type.ARRAY, items: { type: Type.STRING } },
+                cambiosImportantes: { type: Type.ARRAY, items: { type: Type.STRING } },
+                alertas: { type: Type.ARRAY, items: { type: Type.STRING } },
+                oportunidadesAhorro: { type: Type.ARRAY, items: { type: Type.STRING } },
+                tresAcciones: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      accion: { type: Type.STRING },
+                      motivo: { type: Type.STRING },
+                      datos: { type: Type.STRING },
+                      impacto: { type: Type.STRING }
+                    },
+                    required: ['accion', 'motivo', 'datos', 'impacto']
+                  }
+                },
+                prioridadSemana: { type: Type.STRING }
+              },
+              required: [
+                'estadoGeneral',
+                'principalesGastos',
+                'cambiosImportantes',
+                'alertas',
+                'oportunidadesAhorro',
+                'tresAcciones',
+                'prioridadSemana'
+              ]
+            }
+          }
+        });
+        parsed = JSON.parse(retryResponse.text || '{}');
+      }
     } catch (modelErr: any) {
-      console.warn('Gemini 2.5 Flash busy in executive analysis, using grounded calculation:', modelErr?.message);
-      const total = (facturas || []).reduce((acc: number, f: any) => acc + (f.total || 0), 0);
-      parsed = {
-        estadoGeneral: `Dulce Capricho presenta una posición operativa activa con ${facturas?.length || 0} facturas registradas que suman ${total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €. La estructura de costes muestra alta concentración en materias primas de panadería y aprovisionamiento de harina de fuerza, requiriendo supervisión constante sobre márgenes comerciales y calendarios de vencimiento.`,
-        principalesGastos: [
-          'Harinas especiales y granos de fuerza W360 (Harinas y Granos del Sur S.L.)',
-          'Materia grasa láctea y mantequilla 82% (Lácteos & Mantequillas Cantabria S.A.)',
-          'Suministro eléctrico para hornos industriales continuos (Iberdrola Clientes S.A.U.)'
-        ],
-        cambiosImportantes: [
-          'Incremento del 24.4% en cajas kraft 25x25 respecto al coste base del ejercicio',
-          'Subida acumulada del 17.8% en harina de fuerza de 25 kg',
-          'Aumento del 20.3% en mantequilla artesanal de Cantabria'
-        ],
-        alertas: [
-          'Factura FAC-2026-004 de Iberdrola pendiente con vencimiento próximo',
-          'Alta concentración de compras (60% del volumen) en solo 2 proveedores clave',
-          'Factura FAC-2026-003 identificada con vencimiento superado pendiente de regularización'
-        ],
-        oportunidadesAhorro: [
-          'Agrupar compras de embalaje kraft en pedidos trimestrales para conseguir escala del 8-12%',
-          'Revisar potencia contratada en horas valle en el obrador para reducir el término fijo eléctrico',
-          'Solicitar presupuesto alternativo para azúcares y coberturas de chocolate con pago a 30 días'
-        ],
-        tresAcciones: [
-          {
-            accion: 'Negociar escala y congelación de precio en packaging con Envases Gourmet',
-            motivo: 'Frenar la subida del 24.4% en cajas para tartas que erosiona el margen unitario',
-            datos: 'Gasto actual de 0.56 €/unidad frente al histórico de 0.45 €/unidad',
-            impacto: 'Inmediato'
-          },
-          {
-            accion: 'Auditar escandallos de repostería con el nuevo precio de harina y mantequilla',
-            motivo: 'Asegurar que los precios de venta en tienda reflejan el incremento acumulado del 18-20%',
-            datos: 'Mantequilla a 38.50 €/bloque (+20.3%) y harina a 21.80 €/saco (+17.8%)',
-            impacto: 'Alto'
-          },
-          {
-            accion: 'Homologar un proveedor secundario de harina de fuerza',
-            motivo: 'Reducir el riesgo de dependencia calificado como Alto ante posibles roturas de stock',
-            datos: '100% de la harina W360 se adquiere exclusivamente a Harinas y Granos del Sur',
-            impacto: 'Medio'
-          }
-        ],
-        prioridadSemana: 'Negociar con Envases Gourmet la contención de precios en cajas kraft 25x25 o tramitar compra de lote trimestral para mitigar el incremento del 24.4%.'
-      };
+      console.warn('Gemini models temporarily busy in executive analysis, using dynamic grounded calculation:', modelErr?.message);
+      parsed = generateGroundedExecutiveAnalysis(
+        facturas,
+        proveedores,
+        alertas,
+        resumenIVA,
+        empresa
+      );
     }
+
+    if (!parsed || !parsed.estadoGeneral) {
+      parsed = generateGroundedExecutiveAnalysis(
+        facturas,
+        proveedores,
+        alertas,
+        resumenIVA,
+        empresa
+      );
+    }
+
     parsed.id = `ANALISIS-${Date.now()}`;
     parsed.fechaGeneracion = new Date().toISOString();
 
@@ -418,30 +557,79 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
 // Endpoint: Pregunta a tus facturas (Chat con Gemini)
 app.post('/api/gemini/chat', async (req, res) => {
   try {
-    const { mensaje, historial, facturas, proveedores, alertas, resumenIVA } = req.body;
+    const { mensaje, historial, facturas, proveedores, alertas, resumenIVA, nombreNegocio } = req.body;
+    const empresa = nombreNegocio || 'tu empresa';
     const ai = getGeminiClient();
 
-    if (!ai) {
-      // Respuesta asistida local para demostración sin clave
-      let respuesta = 'Actualmente estoy operando con la información local registrada de Dulce Capricho. ';
+    const generateLocalChatAnswer = () => {
+      const safeFacturas = Array.isArray(facturas) ? facturas : [];
+      const safeProveedores = Array.isArray(proveedores) ? proveedores : [];
+      const safeAlertas = Array.isArray(alertas) ? alertas : [];
+
+      const totalGasto = safeFacturas.reduce((acc: number, f: any) => acc + (Number(f.total) || 0), 0);
+      
+      // Calculate top provider from invoices or suppliers
+      const provSpendMap: Record<string, { nombre: string; total: number }> = {};
+      safeFacturas.forEach((f: any) => {
+        const pNom = f.nombreProveedor || 'Proveedor';
+        if (!provSpendMap[pNom]) provSpendMap[pNom] = { nombre: pNom, total: 0 };
+        provSpendMap[pNom].total += Number(f.total) || 0;
+      });
+      const topProv = Object.values(provSpendMap).sort((a, b) => b.total - a.total)[0] 
+        || safeProveedores[0] 
+        || { nombre: 'Proveedor Principal', total: totalGasto };
+
+      // Category map
+      const catMap: Record<string, number> = {};
+      safeFacturas.forEach((f: any) => {
+        const cat = f.categoriaGasto || 'Gastos Operativos';
+        catMap[cat] = (catMap[cat] || 0) + (Number(f.total) || 0);
+      });
+      const topCategories = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+      const topCat = topCategories[0] || ['Gastos Operativos', totalGasto];
+
+      const facturasVencidas = safeFacturas.filter((f: any) => f.estado === 'Vencida');
+      const facturasPendientes = safeFacturas.filter((f: any) => f.estado === 'Pendiente');
       const msgLower = (mensaje || '').toLowerCase();
 
-      if (msgLower.includes('gastando más') || msgLower.includes('mayor gasto')) {
-        respuesta += 'Tu mayor partida de gasto es la categoría de **Materias Primas**, que concentra más del 61% del presupuesto total, destacando especialmente Harinas y Granos del Sur y Lácteos Cantabria.';
-      } else if (msgLower.includes('aumentado precios') || msgLower.includes('encarecido')) {
-        respuesta += 'Los productos con incrementos más marcados son:\n• **Mantequilla artesanal 82% 5kg** (+20,3%)\n• **Harina de fuerza 25 kg** (+17,8%)\n• **Cajas tarta kraft 25x25** (+24,4%).';
-      } else if (msgLower.includes('proveedor más importante') || msgLower.includes('principal proveedor')) {
-        respuesta += 'Tu proveedor principal por volumen acumulado es **Harinas y Granos del Sur S.L.** con un gasto recurrente medio de 4.620 € al mes y una concentración del 41,8% del aprovisionamiento de materias primas.';
-      } else if (msgLower.includes('revisar esta semana') || msgLower.includes('prioridad')) {
-        respuesta += 'La prioridad urgente es **regularizar la factura vencida FAC-2026-064** de Frío Express Logística (1.790,80 €) y cerrar un contrato marco de precios de harina antes de la campaña de otoño.';
-      } else {
-        respuesta += `En base a tus ${facturas?.length || 0} facturas y ${proveedores?.length || 0} proveedores registrados, los números muestran estabilidad operativa pero necesidad de controlar los precios unitarios en materias primas. ¿Deseas que analice algún proveedor o producto en detalle?`;
-      }
+      if (msgLower.includes('gastando más') || msgLower.includes('mayor gasto') || msgLower.includes('principales gastos')) {
+        const breakdown = topCategories.slice(0, 3).map(([cat, tot], idx) => {
+          const pct = totalGasto > 0 ? ((tot / totalGasto) * 100).toFixed(1) : '0';
+          return `${idx + 1}. **${cat}**: ${tot.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € (${pct}% del total)`;
+        }).join('\n');
 
-      return res.json({ respuesta, simulated: true });
+        return `Según los datos registrados de **${empresa}**, el gasto total acumulado asciende a **${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €**.\n\n` +
+          `Tus principales partidas de gasto son:\n${breakdown || 'Sin partidas computadas aún.'}`;
+      } else if (msgLower.includes('proveedor más importante') || msgLower.includes('principal proveedor') || (msgLower.includes('proveedor') && msgLower.includes('importante'))) {
+        const pctProv = totalGasto > 0 && topProv.total ? ((topProv.total / totalGasto) * 100).toFixed(1) : '0';
+        return `Tu proveedor de mayor volumen registrado para **${empresa}** es **${topProv.nombre || topProv.nombreProveedor}**, con un total acumulado de **${(topProv.total || topProv.importeMensual || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (aproximadamente un ${pctProv}% del gasto total).`;
+      } else if (msgLower.includes('aumentado precios') || msgLower.includes('encarecido') || msgLower.includes('subid') || msgLower.includes('precio')) {
+        const subidasAlertas = safeAlertas.filter((a: any) => a.tipo === 'SUBIDA DE PRECIO' || a.tipo === 'ANOMALIA');
+        if (subidasAlertas.length > 0) {
+          const lista = subidasAlertas.map((a: any) => `• **${a.proveedor || a.titulo}**: ${a.descripcion}`).join('\n');
+          return `Se han detectado variaciones notables en las siguientes referencias de **${empresa}**:\n\n${lista}`;
+        }
+        return `En base a las facturas computadas de **${empresa}**, no se han registrado incrementos anómalos o subidas críticas de precios en las alertas activas.`;
+      } else if (msgLower.includes('revisar esta semana') || msgLower.includes('prioridad') || msgLower.includes('semana')) {
+        if (facturasVencidas.length > 0) {
+          const sumVencida = facturasVencidas.reduce((s: number, f: any) => s + (Number(f.total) || 0), 0);
+          return `**Prioridad de la semana para ${empresa}:**\n\nRegularizar las **${facturasVencidas.length} facturas vencidas** que suman un total de **${sumVencida.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (${facturasVencidas.map((f: any) => f.idFactura).slice(0, 3).join(', ')}) para asegurar el flujo con proveedores.`;
+        }
+        return `**Prioridad de la semana para ${empresa}:**\n\nRevisar las condiciones de compra y tarifas de la categoría principal (**${topCat[0]}**), que representa el mayor volumen de gasto registrado.`;
+      } else {
+        return `Analizando las **${safeFacturas.length} facturas** y **${safeProveedores.length} proveedores** de **${empresa}**:\n\n` +
+          `• **Gasto total acumulado:** ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.\n` +
+          `• **Facturas pendientes/vencidas:** ${facturasPendientes.length + facturasVencidas.length}.\n` +
+          `• **Categoría principal:** ${topCat[0]}.\n\n` +
+          `¿Deseas que analice algún proveedor, factura o partida en particular?`;
+      }
+    };
+
+    if (!ai) {
+      return res.json({ respuesta: generateLocalChatAnswer(), simulated: true });
     }
 
-    const systemPrompt = `Eres "Finance AI", el asistente financiero inteligente de "Dulce Capricho".
+    const systemPrompt = `Eres "Finance AI", el asistente financiero inteligente de "${empresa}".
 Responde a las preguntas del usuario utilizando ÚNICAMENTE la información actualmente registrada que te proporcionamos:
 - Facturas registradas (${facturas?.length || 0})
 - Proveedores registrados (${proveedores?.length || 0})
@@ -455,7 +643,7 @@ REGLAS CRÍTICAS:
 4. Recuerda que los cálculos fiscales son un "Resumen orientativo basado en las facturas registradas" y no asesoría fiscal colegiada.`;
 
     const contextData = `
-DATOS ACTUALMENTE REGISTRADOS DE DULCE CAPRICHO:
+DATOS ACTUALMENTE REGISTRADOS DE ${empresa.toUpperCase()}:
 FACTURAS: ${JSON.stringify(facturas || [])}
 PROVEEDORES: ${JSON.stringify(proveedores || [])}
 ALERTAS: ${JSON.stringify(alertas || [])}
@@ -467,7 +655,6 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
     ];
 
     if (historial && Array.isArray(historial) && historial.length > 0) {
-      // Incluir turnos previos si están presentes
       const recentHistory = historial.slice(-6);
       const conversationText = recentHistory.map((m: any) => `${m.emisor === 'usuario' ? 'Usuario' : 'Asistente'}: ${m.texto}`).join('\n');
       contents[0] = { text: `${contextData}\n\nConversación previa:\n${conversationText}\n\nNueva pregunta del usuario: ${mensaje}` };
@@ -475,20 +662,20 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
 
     let responseText = '';
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: contents,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.2, // Baja temperatura para máxima fidelidad
-        }
-      });
-      responseText = response.text || '';
-    } catch (modelErr: any) {
-      console.warn('Gemini 3.8 Flash busy, trying lite or fallback:', modelErr?.message);
       try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: contents,
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.2,
+          }
+        });
+        responseText = response.text || '';
+      } catch (firstErr: any) {
+        console.warn('Gemini 3.8 Flash busy on chat, retrying with gemini-3.1-flash-lite:', firstErr?.message);
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-3.5-flash-lite',
+          model: 'gemini-3.1-flash-lite',
           contents: contents,
           config: {
             systemInstruction: systemPrompt,
@@ -496,42 +683,13 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
           }
         });
         responseText = retryResponse.text || '';
-      } catch (secondErr) {
-        console.warn('Gemini models temporarily busy, using local grounded calculation');
-        // Calculate direct answer from registered data
-        const totalGasto = (facturas || []).reduce((acc: number, f: any) => acc + (f.total || 0), 0);
-        const topProv = [...(proveedores || [])].sort((a: any, b: any) => (b.importeMensual || 0) - (a.importeMensual || 0))[0];
-        const subidasAlertas = (alertas || []).filter((a: any) => a.tipo === 'SUBIDA DE PRECIO');
-        
-        if (mensaje.toLowerCase().includes('gastando más') || mensaje.toLowerCase().includes('principales gastos')) {
-          responseText = `Según los datos registrados en **Dulce Capricho**, el volumen total acumulado asciende a **${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €**.\n\n` +
-            `Tus principales partidas de gasto son:\n` +
-            `1. **Materias Primas de Panadería & Confitería** (~60% del gasto total): Harinas de fuerza de *Harinas y Granos del Sur S.L.* y mantecas/lácteos de *Lácteos & Mantequillas Cantabria S.A.*.\n` +
-            `2. **Suministros Industriales y Energía**: Consumo eléctrico del horno rotativo (*Iberdrola Clientes S.A.U.*) con un promedio de 845 €/mes.\n` +
-            `3. **Envases & Packaging**: Cajas kraft y bolsas microperforadas (*Envases & Packaging Gourmet S.L.*).`;
-        } else if (mensaje.toLowerCase().includes('proveedor') && mensaje.toLowerCase().includes('importante')) {
-          responseText = `Tu proveedor de mayor volumen económico y dependencia operativa es **${topProv ? topProv.nombreProveedor : 'Harinas y Granos del Sur S.L.'}**, con un gasto medio de **${topProv ? topProv.importeMensual.toFixed(2) : '1.850,00'} €/mes**.\n\n` +
-            `Presenta un **Riesgo de Dependencia Alto** debido a que es el suministrador exclusivo de harina de gran fuerza (W360) para tus roscones y panettones.`;
-        } else if (mensaje.toLowerCase().includes('precio') || mensaje.toLowerCase().includes('encarecid') || mensaje.toLowerCase().includes('subid')) {
-          responseText = `Se han detectado subidas notables de precio en los siguientes productos:\n\n` +
-            `• **Cajas tarta kraft 25x25**: +24.4% (de 0.45 € a 0.56 €/unidad) suministradas por *Envases & Packaging Gourmet*.\n` +
-            `• **Mantequilla artesanal 82%**: +20.3% (de 32.00 € a 38.50 €/bloque) de *Lácteos Cantabria*.\n` +
-            `• **Bolsas ventana microperforadas**: +19.7% (de 0.38 € a 0.455 €/ud).\n` +
-            `• **Harina de fuerza 25 kg**: +17.8% (de 18.50 € a 21.80 €/saco) de *Harinas y Granos del Sur*.`;
-        } else if (mensaje.toLowerCase().includes('semana') || mensaje.toLowerCase().includes('revisar')) {
-          responseText = `**Prioridad de la semana para Dulce Capricho:**\n\n` +
-            `Negociar con **Envases & Packaging Gourmet S.L.** la subida de un +24.4% en cajas kraft 25x25 (de 0.45 € a 0.56 €) y las bolsas para bollería, o agrupar pedidos trimestrales para exigir descuento por volumen de compra.`;
-        } else {
-          responseText = `Analizando las **${(facturas || []).length} facturas** registradas de Dulce Capricho:\n\n` +
-            `• **Gasto total acumulado:** ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.\n` +
-            `• **Proveedores activos:** ${(proveedores || []).length}.\n` +
-            `• **Alertas activas:** ${(alertas || []).length} anomalías (incluyendo ${subidasAlertas.length} subidas de precio registradas).\n\n` +
-            `¿Deseas profundizar en algún proveedor o producto concreto?`;
-        }
       }
+    } catch (modelErr: any) {
+      console.warn('Gemini models busy in chat, using grounded response:', modelErr?.message);
+      responseText = generateLocalChatAnswer();
     }
 
-    return res.json({ respuesta: responseText || 'Sin respuesta del modelo', simulated: false });
+    return res.json({ respuesta: responseText || generateLocalChatAnswer(), simulated: false });
   } catch (error: any) {
     console.error('Error en chat con Gemini:', error);
     return res.status(500).json({ error: error?.message || 'Error en servicio de consulta' });
@@ -567,7 +725,7 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
     const driveFolderNameCalculado = (factura.nombreProveedor || 'Proveedores Varios').trim();
 
     // Guardar en la pestaña "Facturas"
-    // Columnas exactas: ID Factura, Fecha de Emisión, ID Proveedor, Concepto, Importe, Fecha de Vencimiento, Estado, Fecha de Pago, Base imponible, Tipo/s de IVA, Cuota IVA, Total, Categoría de gasto, Enlace Google Drive
+    // Columnas exactas: ID Factura, Fecha de Emisión, ID Proveedor, Nombre proveedor, Concepto, Importe, Fecha de Vencimiento, Estado, Fecha de Pago, Base imponible, Tipo/s de IVA, Cuota IVA, Total, Categoría de gasto, Enlace Google Drive
     const nuevaFila: any = {
       idFactura: factura.idFactura,
       fechaEmision: factura.fechaEmision,
@@ -617,6 +775,7 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           redirect: 'follow',
+          signal: AbortSignal.timeout(15000),
           body: JSON.stringify({
             action: 'appendInvoice',
             tab: 'Facturas',
@@ -634,6 +793,7 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
               nuevaFila.idFactura,
               nuevaFila.fechaEmision,
               nuevaFila.idProveedor,
+              nuevaFila.nombreProveedor,
               nuevaFila.concepto,
               nuevaFila.importe,
               nuevaFila.fechaVencimiento,
@@ -759,6 +919,7 @@ app.get('/api/sheets/status', (req, res) => {
       'ID Factura',
       'Fecha de Emisión',
       'ID Proveedor',
+      'Nombre proveedor',
       'Concepto',
       'Importe',
       'Fecha de Vencimiento',
@@ -776,9 +937,10 @@ app.get('/api/sheets/status', (req, res) => {
 
 // Endpoint: Verificar acceso real y permisos a la hoja Facturas y Google Drive vía Apps Script
 app.get('/api/sheets/verify', async (req, res) => {
-  const endpointUrl = (req.query?.endpointUrl as string) || process.env.GOOGLE_SHEETS_ENDPOINT_URL;
-  const sheetId = (req.query?.sheetId as string) || process.env.GOOGLE_SHEETS_ID;
-  const driveFolderId = (req.query?.driveFolderId as string) || process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const endpointUrl = ((req.query?.endpointUrl as string) || process.env.GOOGLE_SHEETS_ENDPOINT_URL || '').trim();
+  const rawSheetId = ((req.query?.sheetId as string) || process.env.GOOGLE_SHEETS_ID || '').trim();
+  const sheetId = extractCleanSheetId(rawSheetId);
+  const driveFolderId = ((req.query?.driveFolderId as string) || process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim();
 
   if (!endpointUrl) {
     return res.json({
@@ -803,6 +965,7 @@ app.get('/api/sheets/verify', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(testPayload),
       redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
     });
 
     const contentType = response.headers.get('content-type') || '';
@@ -963,6 +1126,16 @@ app.post('/api/sheets/upload-to-drive', async (req, res) => {
 });
 
 // Helpers de parseo de filas de Google Sheets
+function extractCleanSheetId(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return trimmed;
+}
+
 function parseNumeric(val: any): number {
   if (typeof val === 'number') return isNaN(val) ? 0 : val;
   if (!val) return 0;
@@ -1008,19 +1181,55 @@ function parseRawSheetRow(row: any[], index: number): any {
 
   const fechaEmision = parseDate(row[1]) || new Date().toISOString().split('T')[0];
   const idProveedor = String(row[2] || 'PROV-GEN').trim();
-  const concepto = String(row[3] || 'Factura registrada en Google Sheets').trim();
-  const importe = parseNumeric(row[4]);
-  const fechaVencimiento = parseDate(row[5]) || fechaEmision;
-  const rawEstado = String(row[6] || 'Pendiente').toLowerCase();
+
+  // Detectar inteligentemente si la fila tiene 15 columnas (con Nombre proveedor en índice 3) o 14 columnas
+  const is15Cols = row.length >= 15 || (row.length >= 14 && typeof row[3] === 'string' && (typeof row[5] === 'number' || !isNaN(parseFloat(String(row[5] || '').replace(/,/g, '.')))));
+
+  let nombreProveedor = '';
+  let concepto = '';
+  let importe = 0;
+  let fechaVencimiento = '';
+  let rawEstado = '';
+  let fechaPago = '';
+  let baseImponible = 0;
+  let tiposIVA = '21%';
+  let cuotaIVA = 0;
+  let total = 0;
+  let categoriaGasto = 'Materias Primas';
+  let driveFileUrl = '';
+
+  if (is15Cols && row.length >= 5) {
+    nombreProveedor = String(row[3] || '').trim() || (idProveedor.startsWith('PROV-') ? `Proveedor ${idProveedor}` : idProveedor);
+    concepto = String(row[4] || 'Factura registrada en Google Sheets').trim();
+    importe = parseNumeric(row[5]);
+    fechaVencimiento = parseDate(row[6]) || fechaEmision;
+    rawEstado = String(row[7] || 'Pendiente').toLowerCase();
+    fechaPago = parseDate(row[8]) || '';
+    baseImponible = parseNumeric(row[9]) || importe;
+    tiposIVA = String(row[10] || '21%').trim();
+    cuotaIVA = parseNumeric(row[11]) || Math.round(baseImponible * 0.21 * 100) / 100;
+    total = parseNumeric(row[12]) || Math.round((baseImponible + cuotaIVA) * 100) / 100;
+    categoriaGasto = String(row[13] || 'Materias Primas').trim();
+    driveFileUrl = String(row[14] || '').trim();
+  } else {
+    nombreProveedor = idProveedor.startsWith('PROV-') ? `Proveedor ${idProveedor}` : idProveedor;
+    concepto = String(row[3] || 'Factura registrada en Google Sheets').trim();
+    importe = parseNumeric(row[4]);
+    fechaVencimiento = parseDate(row[5]) || fechaEmision;
+    rawEstado = String(row[6] || 'Pendiente').toLowerCase();
+    fechaPago = parseDate(row[7]) || '';
+    baseImponible = parseNumeric(row[8]) || importe;
+    tiposIVA = String(row[9] || '21%').trim();
+    cuotaIVA = parseNumeric(row[10]) || Math.round(baseImponible * 0.21 * 100) / 100;
+    total = parseNumeric(row[11]) || Math.round((baseImponible + cuotaIVA) * 100) / 100;
+    categoriaGasto = String(row[12] || 'Materias Primas').trim();
+    driveFileUrl = String(row[13] || '').trim();
+  }
+
   const estado = rawEstado.includes('pagad') ? 'Pagada' : rawEstado.includes('venc') ? 'Vencida' : 'Pendiente';
-  const fechaPago = parseDate(row[7]) || (estado === 'Pagada' ? fechaEmision : '');
-  const baseImponible = parseNumeric(row[8]) || importe;
-  const tiposIVA = String(row[9] || '21%').trim();
-  const cuotaIVA = parseNumeric(row[10]) || Math.round(baseImponible * 0.21 * 100) / 100;
-  const total = parseNumeric(row[11]) || Math.round((baseImponible + cuotaIVA) * 100) / 100;
-  const categoriaGasto = String(row[12] || 'Materias Primas').trim();
-  const driveFileUrl = String(row[13] || '').trim();
-  const nombreProveedor = idProveedor.startsWith('PROV-') ? `Proveedor ${idProveedor}` : idProveedor;
+  if (estado === 'Pagada' && !fechaPago) {
+    fechaPago = fechaEmision;
+  }
 
   return {
     idFactura,
@@ -1048,14 +1257,16 @@ function parseRawSheetRow(row: any[], index: number): any {
 
 // Endpoint: Obtener y sincronizar facturas reales de la hoja "Facturas"
 app.all('/api/sheets/fetch-invoices', async (req, res) => {
-  const sheetId = (req.body?.sheetId || req.query?.sheetId || process.env.GOOGLE_SHEETS_ID || '').toString();
-  const endpointUrl = (req.body?.endpointUrl || req.query?.endpointUrl || process.env.GOOGLE_SHEETS_ENDPOINT_URL || '').toString();
+  const rawSheetId = (req.body?.sheetId || req.query?.sheetId || process.env.GOOGLE_SHEETS_ID || '').toString().trim();
+  const sheetId = extractCleanSheetId(rawSheetId);
+  const endpointUrl = (req.body?.endpointUrl || req.query?.endpointUrl || process.env.GOOGLE_SHEETS_ENDPOINT_URL || '').toString().trim();
 
   const facturasEncontradas: any[] = [];
   let source = 'ninguna';
   let sheetChecked = false;
+  let connectionError = '';
 
-  // 1. Intentar leer vía Google Apps Script Web App (POST getFacturas)
+  // 1. Intentar leer vía Google Apps Script Web App (POST getFacturas con timeout amplio de 18s)
   if (endpointUrl && endpointUrl.startsWith('http')) {
     try {
       const response = await fetch(endpointUrl, {
@@ -1067,57 +1278,111 @@ app.all('/api/sheets/fetch-invoices', async (req, res) => {
           sheetId: sheetId
         }),
         redirect: 'follow',
+        signal: AbortSignal.timeout(18000),
       });
 
-      const data = await response.json().catch(() => null);
-      if (data && (data.status === 'success' || Array.isArray(data.facturas))) {
-        sheetChecked = true;
-        source = 'apps_script';
-        if (Array.isArray(data.facturas)) {
-          data.facturas.forEach((r: any, idx: number) => {
-            const parsed = Array.isArray(r) ? parseRawSheetRow(r, idx) : (r.idFactura ? r : null);
-            if (parsed && !facturasEncontradas.some(f => f.idFactura === parsed.idFactura)) {
-              facturasEncontradas.push(parsed);
-            }
-          });
+      const rawText = await response.text();
+      if (
+        rawText.includes('accounts.google.com') ||
+        rawText.includes('toegang nodig') ||
+        rawText.includes('Sign in') ||
+        rawText.includes('necesitas acceso')
+      ) {
+        connectionError = 'La Web App de Google Apps Script requiere permisos de acceso público ("Cualquier usuario").';
+      } else {
+        let data: any = null;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = null;
         }
-        // Sincronizar el caché del servidor con la realidad de la hoja de Google Sheets.
-        // Si el usuario eliminó las filas de la hoja, la lista de facturas queda en 0.
-        serverFacturas = [...facturasEncontradas];
+
+        if (data && (data.status === 'success' || Array.isArray(data.facturas))) {
+          sheetChecked = true;
+          source = 'apps_script';
+          if (Array.isArray(data.facturas)) {
+            data.facturas.forEach((r: any, idx: number) => {
+              const parsed = Array.isArray(r) ? parseRawSheetRow(r, idx) : (r.idFactura ? r : null);
+              if (parsed && !facturasEncontradas.some(f => f.idFactura === parsed.idFactura)) {
+                facturasEncontradas.push(parsed);
+              }
+            });
+          }
+          // Sincronizar el caché del servidor con la realidad de la hoja de Google Sheets.
+          serverFacturas = [...facturasEncontradas];
+        } else if (data && data.error) {
+          connectionError = `Google Apps Script reportó: ${data.error}`;
+        }
       }
-    } catch (e) {
-      console.warn('Advertencia al consultar getFacturas en Apps Script:', e);
+    } catch (e: any) {
+      console.warn('Consulta getFacturas por POST no completada:', e?.message || e);
+      // Intentar una consulta GET rápida a Apps Script como alternativa
+      try {
+        const getUrl = `${endpointUrl}${endpointUrl.includes('?') ? '&' : '?'}action=getFacturas&tab=Facturas&sheetId=${encodeURIComponent(sheetId)}`;
+        const getRes = await fetch(getUrl, { redirect: 'follow', signal: AbortSignal.timeout(8000) });
+        const getText = await getRes.text();
+        const getData = JSON.parse(getText);
+        if (getData && (getData.status === 'success' || Array.isArray(getData.facturas))) {
+          sheetChecked = true;
+          source = 'apps_script';
+          if (Array.isArray(getData.facturas)) {
+            getData.facturas.forEach((r: any, idx: number) => {
+              const parsed = Array.isArray(r) ? parseRawSheetRow(r, idx) : (r.idFactura ? r : null);
+              if (parsed && !facturasEncontradas.some(f => f.idFactura === parsed.idFactura)) {
+                facturasEncontradas.push(parsed);
+              }
+            });
+          }
+          serverFacturas = [...facturasEncontradas];
+        }
+      } catch {
+        connectionError = e?.name === 'TimeoutError'
+          ? 'Tiempo de espera agotado al conectar con Google Apps Script. Se recomienda verificar permisos o usar sincronización directa.'
+          : (e?.message || 'Error al conectar con Google Apps Script');
+      }
     }
   }
 
-  // 2. Si no se pudo consultar por Apps Script y hay sheetId, intentar CSV
+  // 2. Si no se pudo consultar por Apps Script y hay sheetId, intentar CSV directamente de Google Sheets
   if (!sheetChecked && sheetId) {
     try {
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&sheet=Facturas`;
-      const csvRes = await fetch(csvUrl, { redirect: 'follow' });
-      if (csvRes.ok) {
-        const text = await csvRes.text();
-        if (!text.includes('<!DOCTYPE') && !text.includes('accounts.google.com')) {
-          sheetChecked = true;
-          source = 'google_sheets_csv';
-          const lines = text.split('\n').filter(l => l.trim().length > 0);
-          lines.forEach((line, idx) => {
-            const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-            const parsed = parseRawSheetRow(cols, idx);
-            if (parsed && !facturasEncontradas.some(f => f.idFactura === parsed.idFactura)) {
-              facturasEncontradas.push(parsed);
+      const csvUrls = [
+        `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Facturas`,
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&sheet=Facturas`,
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+      ];
+
+      for (const csvUrl of csvUrls) {
+        if (sheetChecked) break;
+        try {
+          const csvRes = await fetch(csvUrl, { redirect: 'follow', signal: AbortSignal.timeout(6000) });
+          if (csvRes.ok) {
+            const text = await csvRes.text();
+            if (!text.includes('<!DOCTYPE') && !text.includes('accounts.google.com') && text.trim().length > 0) {
+              sheetChecked = true;
+              source = 'google_sheets_csv';
+              const lines = text.split('\n').filter(l => l.trim().length > 0);
+              lines.forEach((line, idx) => {
+                const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                const parsed = parseRawSheetRow(cols, idx);
+                if (parsed && !facturasEncontradas.some(f => f.idFactura === parsed.idFactura)) {
+                  facturasEncontradas.push(parsed);
+                }
+              });
+              serverFacturas = [...facturasEncontradas];
+              break;
             }
-          });
-          serverFacturas = [...facturasEncontradas];
+          }
+        } catch {
+          // continuar con siguiente URL
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn('No se pudo leer CSV de Google Sheets:', e);
     }
   }
 
-  // 3. Solo si NO se pudo verificar Google Sheets de ninguna forma (modo offline o sin conexión configurada)
-  // y hay facturas en la memoria del servidor de la sesión actual:
+  // 3. Si se pudo consultar la hoja o hay facturas en la memoria del servidor
   if (!sheetChecked && serverFacturas.length > 0) {
     serverFacturas.forEach(sf => {
       if (!facturasEncontradas.some(f => f.idFactura === sf.idFactura)) {
@@ -1125,19 +1390,34 @@ app.all('/api/sheets/fetch-invoices', async (req, res) => {
       }
     });
     source = 'server_cache';
+    sheetChecked = true;
   }
 
-  res.json({
-    success: true,
-    connected: !!(endpointUrl || sheetId),
-    hasRealData: facturasEncontradas.length > 0,
-    count: facturasEncontradas.length,
-    facturas: facturasEncontradas,
-    source,
-    tab: 'Facturas',
-    sheetId,
-    endpointUrl
-  });
+  if (sheetChecked) {
+    return res.json({
+      success: true,
+      connected: true,
+      hasRealData: facturasEncontradas.length > 0,
+      count: facturasEncontradas.length,
+      facturas: facturasEncontradas,
+      source,
+      tab: 'Facturas',
+      sheetId,
+      endpointUrl
+    });
+  } else {
+    return res.json({
+      success: false,
+      connected: false,
+      hasRealData: false,
+      count: 0,
+      facturas: [],
+      source: 'error',
+      error: connectionError || 'No se pudo conectar con la hoja de Google Sheets ni con Google Apps Script.',
+      sheetId,
+      endpointUrl
+    });
+  }
 });
 
 // Endpoint: Eliminar una factura por ID tanto del servidor como de Google Sheets y Google Drive
@@ -1174,6 +1454,7 @@ app.post('/api/sheets/delete-invoice', async (req, res) => {
           fileUrl: fileUrl || ''
         }),
         redirect: 'follow',
+        signal: AbortSignal.timeout(12000),
       });
       const rawText = await response.text();
       try {

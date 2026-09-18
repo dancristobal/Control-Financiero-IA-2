@@ -13,7 +13,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { Factura, Proveedor, Alerta, AnalisisEjecutivo } from '../types';
+import { Factura, Proveedor, Alerta, AnalisisEjecutivo, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
 interface InformePdfModalProps {
   isOpen: boolean;
@@ -22,6 +22,7 @@ interface InformePdfModalProps {
   proveedores: Proveedor[];
   alertas: Alerta[];
   analisis: AnalisisEjecutivo;
+  datosNegocio?: DatosNegocio;
 }
 
 export const InformePdfModal: React.FC<InformePdfModalProps> = ({
@@ -31,9 +32,12 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
   proveedores,
   alertas,
   analisis,
+  datosNegocio,
 }) => {
   const [paginaActual, setPaginaActual] = useState(1);
   const totalPaginas = 9;
+
+  const negocio = datosNegocio && datosNegocio.nombre ? datosNegocio : DEFAULT_DATOS_NEGOCIO;
 
   if (!isOpen) return null;
 
@@ -60,7 +64,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                 Informe Financiero Ejecutivo (9 Páginas)
               </h3>
               <p className="text-[11px] text-slate-400">
-                Dulce Capricho • Documento Corporativo de Auditoría
+                {negocio.nombre} • Documento Corporativo de Auditoría
               </p>
             </div>
           </div>
@@ -134,10 +138,10 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                   Informe de Gestión y Control de Gastos
                 </span>
                 <h2 className="text-4xl sm:text-5xl font-extrabold text-slate-100 tracking-tight mt-2">
-                  Dulce Capricho
+                  {negocio.nombre}
                 </h2>
                 <p className="text-sm text-slate-400 mt-2 max-w-lg leading-relaxed">
-                  Obrador y Confitería Artesanal • Ejercicio Económico 2026
+                  {negocio.actividad || 'Control Financiero y Auditoría de Gastos'} • Ejercicio Económico 2026
                 </p>
               </div>
             </div>
@@ -178,7 +182,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 2: Resumen Ejecutivo
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="p-5 rounded-xl bg-[#0a0f18] border border-slate-800 space-y-2">
@@ -195,15 +199,17 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                 Aspectos Operativos Destacados
               </h4>
               <p>
-                Durante el periodo de 2026 analizado, Dulce Capricho ha formalizado un volumen total
+                Durante el periodo de 2026 analizado, {negocio.nombre} ha formalizado un volumen total
                 de <strong>{totalGasto.toLocaleString('es-ES')} €</strong> distribuidos en{' '}
                 <strong>{facturas.length} facturas</strong> registradas y vinculadas con la hoja de
                 cálculo corporativa.
               </p>
               <p>
-                La estructura de costes refleja una alta concentración en el aprovisionamiento de
-                harinas especiales y grasas lácteas para hojaldres, lo que hace al negocio sensible a
-                las oscilaciones de materias primas agrícolas e industriales.
+                {facturas.length > 0 ? (
+                  `La estructura de costes registrada se distribuye entre ${proveedores.length} proveedores clave y distintas partidas operativas, lo que permite evaluar la diversificación del gasto y la sensibilidad del negocio ante variaciones de precios.`
+                ) : (
+                  'La estructura de costes se irá consolidando a medida que se incorporen y sincronicen nuevas facturas en el sistema.'
+                )}
               </p>
             </div>
 
@@ -224,7 +230,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 3: Indicadores Clave de Rendimiento (KPIs)
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -294,7 +300,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 4: Desglose Presupuestario por Categoría
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="space-y-3">
@@ -319,7 +325,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 5: Análisis de Proveedores y Dependencia
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="rounded-xl border border-slate-800 overflow-hidden text-xs">
@@ -372,7 +378,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 6: Evolución de Precios de Productos y Subidas
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="space-y-3">
@@ -397,7 +403,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 7: Alertas Financieras y Contingencias
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="space-y-3">
@@ -428,7 +434,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 8: Resumen y Desglose de IVA
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/40 text-xs text-amber-200">
@@ -463,7 +469,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
               <h2 className="text-lg font-bold text-slate-100">
                 Página 9: Plan de Acción y Prioridades Estratégicas
               </h2>
-              <span className="text-xs text-slate-400">FINANCE AI • Dulce Capricho</span>
+              <span className="text-xs text-slate-400">FINANCE AI • {negocio.nombre}</span>
             </div>
 
             <div className="space-y-4 text-xs">

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   FileText,
-  Download,
   ExternalLink,
   ZoomIn,
   ZoomOut,
@@ -19,13 +18,14 @@ import {
   Eye,
   RefreshCw,
 } from 'lucide-react';
-import { Factura } from '../types';
+import { Factura, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
 interface VisorFacturaModalProps {
   factura: Factura | null;
   isOpen: boolean;
   onClose: () => void;
   onVerDetallesCompletos?: (factura: Factura) => void;
+  datosNegocio?: DatosNegocio;
 }
 
 // Convert base64 data to Blob URL for clean browser/iframe rendering
@@ -57,6 +57,7 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
   isOpen,
   onClose,
   onVerDetallesCompletos,
+  datosNegocio,
 }) => {
   const [zoom, setZoom] = useState<number>(100);
   const [rotacion, setRotacion] = useState<number>(0);
@@ -65,6 +66,21 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
   const [vistaModo, setVistaModo] = useState<'documento' | 'resumen'>('documento');
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [iframeError, setIframeError] = useState<boolean>(false);
+
+  // Obtener datos del negocio parametrizables (desde props, localStorage o valores por defecto)
+  const negocioActual = useMemo<DatosNegocio>(() => {
+    if (datosNegocio && datosNegocio.nombre) return datosNegocio;
+    try {
+      const saved = localStorage.getItem('fa_datos_negocio_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.nombre) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error al cargar datos negocio en visor', e);
+    }
+    return DEFAULT_DATOS_NEGOCIO;
+  }, [datosNegocio]);
 
   // Generar Blob URL cuando cambie la factura o su base64
   useEffect(() => {
@@ -250,31 +266,6 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
                 <span className="hidden sm:inline">Desglose</span>
               </button>
             </div>
-
-            {/* Descargar archivo si está disponible en base64 o Drive */}
-            {previewData.url && (
-              <a
-                href={previewData.url}
-                download={factura.archivoNombre || `${factura.idFactura}.pdf`}
-                className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-                title="Descargar archivo"
-              >
-                <Download className="w-4 h-4" />
-              </a>
-            )}
-
-            {/* Abrir en pestaña nueva si hay Blob URL o enlace */}
-            {previewData.url && (
-              <a
-                href={previewData.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-xl border border-slate-800 bg-[#070b12] text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors hidden sm:flex"
-                title="Abrir en pestaña nueva"
-              >
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            )}
 
             {/* Zoom Controls (para imágenes o representación) */}
             <div className="hidden md:flex items-center bg-[#070b12] border border-slate-800 rounded-xl p-0.5">
@@ -497,9 +488,13 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
                     Cliente / Receptor
                   </span>
                   <p className="text-xs font-bold text-slate-900 mt-0.5">
-                    Pastelería y Confitería Dulce Capricho S.L.
+                    {negocioActual.nombre}
                   </p>
-                  <p className="text-[11px] text-slate-600">NIF: B-82910394 • C/ Mayor 24, Obrador Central</p>
+                  <p className="text-[11px] text-slate-600">
+                    {negocioActual.nif ? `NIF: ${negocioActual.nif}` : ''}
+                    {negocioActual.nif && negocioActual.direccion ? ' • ' : ''}
+                    {negocioActual.direccion || ''}
+                  </p>
                 </div>
 
                 {/* Concepto General */}
@@ -573,7 +568,7 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
                 {/* Pie de Certificación */}
                 <div className="mt-6 pt-3 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
                   <span>
-                    Certificado de extracción con Google Gemini AI • Dulce Capricho
+                    Certificado de extracción con Google Gemini AI • {negocioActual.nombre}
                   </span>
                   <span className="font-mono text-emerald-600 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />

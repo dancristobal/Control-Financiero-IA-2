@@ -25,7 +25,7 @@ import {
   ChevronsLeft,
   ChevronsRight
 } from 'lucide-react';
-import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig } from '../types';
+import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio } from '../types';
 import { FacturaDetalleModal } from './FacturaDetalleModal';
 import { EliminarFacturaModal } from './EliminarFacturaModal';
 import { VisorFacturaModal } from './VisorFacturaModal';
@@ -35,6 +35,7 @@ interface FacturasViewProps {
   facturas: Factura[];
   proveedores: Proveedor[];
   sheetsConfig: GoogleSheetsConfig;
+  datosNegocio?: DatosNegocio;
   onSaveFactura: (
     factura: Factura,
     archivoInfo?: { base64Data?: string; fileName?: string; mimeType?: string }
@@ -57,6 +58,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   facturas,
   proveedores,
   sheetsConfig,
+  datosNegocio,
   onSaveFactura,
   onDeleteFactura,
   onOpenConfig,
@@ -1643,6 +1645,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
           setFacturaParaVisor(null);
           setFacturaSeleccionada(fac);
         }}
+        datosNegocio={datosNegocio}
       />
 
       {/* Camera Capture Modal */}

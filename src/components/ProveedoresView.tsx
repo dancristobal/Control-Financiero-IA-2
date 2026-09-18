@@ -13,23 +13,34 @@ import {
   ChevronRight,
   X,
   Layers,
-  Percent
+  Percent,
+  Eye
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Proveedor, Factura } from '../types';
+import { Proveedor, Factura, DatosNegocio } from '../types';
+import { FacturaDetalleModal } from './FacturaDetalleModal';
+import { VisorFacturaModal } from './VisorFacturaModal';
 
 interface ProveedoresViewProps {
   proveedores: Proveedor[];
   facturas: Factura[];
+  datosNegocio?: DatosNegocio;
+  onUploadToDrive?: (factura: Factura) => Promise<any> | void;
+  onDeleteFactura?: (factura: Factura) => void;
 }
 
 export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
   proveedores,
   facturas,
+  datosNegocio,
+  onUploadToDrive,
+  onDeleteFactura,
 }) => {
   const [busqueda, setBusqueda] = useState('');
   const [filtroRiesgo, setFiltroRiesgo] = useState('TODOS');
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
+  const [facturaSeleccionada, setFacturaSeleccionada] = useState<Factura | null>(null);
+  const [facturaParaVisor, setFacturaParaVisor] = useState<Factura | null>(null);
 
   // Calculate aggregates for each supplier
   const proveedoresConMetricas = useMemo(() => {
@@ -342,9 +353,14 @@ export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
 
               {/* Invoices History Table */}
               <div>
-                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  Histórico de Facturas Emitidas ({selectedSupplierDetails.facturas.length})
-                </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Histórico de Facturas Emitidas ({selectedSupplierDetails.facturas.length})
+                  </h4>
+                  <span className="text-[11px] text-slate-400 italic">
+                    Haz clic en una factura para ver su detalle completo
+                  </span>
+                </div>
 
                 <div className="rounded-xl border border-slate-800 overflow-hidden">
                   <table className="w-full text-left text-xs">
@@ -355,12 +371,18 @@ export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
                         <th className="p-3">Concepto</th>
                         <th className="p-3 text-right">Total</th>
                         <th className="p-3 text-center">Estado</th>
+                        <th className="p-3 text-right">Acción</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 bg-[#0a0f18]">
                       {selectedSupplierDetails.facturas.map((f) => (
-                        <tr key={f.idFactura} className="hover:bg-slate-800/30">
-                          <td className="p-3 font-mono font-bold text-slate-200">
+                        <tr
+                          key={f.idFactura}
+                          onClick={() => setFacturaSeleccionada(f)}
+                          className="hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                          title="Clic para abrir detalle de la factura"
+                        >
+                          <td className="p-3 font-mono font-bold text-slate-200 group-hover:text-rose-400 transition-colors">
                             {f.idFactura}
                           </td>
                           <td className="p-3 text-slate-400 font-mono">{f.fechaEmision}</td>
@@ -372,17 +394,38 @@ export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
                             <span
                               className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                                 f.estado === 'Pagada'
-                                  ? 'bg-emerald-500/15 text-emerald-400'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                                   : f.estado === 'Vencida'
-                                  ? 'bg-rose-500/20 text-rose-400'
-                                  : 'bg-amber-500/15 text-amber-400'
+                                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                  : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                               }`}
                             >
                               {f.estado}
                             </span>
                           </td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFacturaSeleccionada(f);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 group-hover:bg-rose-600 text-slate-300 group-hover:text-white text-[11px] font-medium transition-all"
+                              title="Ver detalle"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Ver</span>
+                            </button>
+                          </td>
                         </tr>
                       ))}
+                      {selectedSupplierDetails.facturas.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-xs text-slate-500">
+                            No hay facturas emitidas por este proveedor todavía.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -393,7 +436,7 @@ export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
             <div className="p-4 border-t border-slate-800 bg-[#0d131f] flex items-center justify-end">
               <button
                 onClick={() => setProveedorSeleccionado(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
               >
                 Cerrar Ficha
               </button>
@@ -401,6 +444,37 @@ export const ProveedoresView: React.FC<ProveedoresViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Invoice Detail Modal when clicked from Proveedores */}
+      <FacturaDetalleModal
+        factura={facturaSeleccionada}
+        onClose={() => setFacturaSeleccionada(null)}
+        onDelete={
+          onDeleteFactura
+            ? (fac) => {
+                setFacturaSeleccionada(null);
+                onDeleteFactura(fac);
+              }
+            : undefined
+        }
+        onAbrirVisor={(fac) => {
+          setFacturaSeleccionada(null);
+          setFacturaParaVisor(fac);
+        }}
+        onUploadToDrive={onUploadToDrive}
+      />
+
+      {/* Visor Factura Modal when opened from FacturaDetalleModal */}
+      <VisorFacturaModal
+        factura={facturaParaVisor}
+        isOpen={Boolean(facturaParaVisor)}
+        onClose={() => setFacturaParaVisor(null)}
+        onVerDetallesCompletos={(fac) => {
+          setFacturaParaVisor(null);
+          setFacturaSeleccionada(fac);
+        }}
+        datosNegocio={datosNegocio}
+      />
     </div>
   );
 };
