@@ -18,9 +18,31 @@ import {
   Moon,
   Palette,
   Building2,
+  Sliders,
+  Clock,
+  TrendingUp,
+  Percent,
+  ShieldAlert,
+  RotateCcw,
+  Calendar,
+  Layers,
+  Save,
+  Info,
+  CalendarDays,
 } from 'lucide-react';
-import { GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import {
+  GoogleSheetsConfig,
+  DatosNegocio,
+  DEFAULT_DATOS_NEGOCIO,
+  ParametrosSistema,
+  DEFAULT_PARAMETROS_SISTEMA,
+} from '../types';
 import { ThemeMode } from '../utils/theme';
+import {
+  obtenerParametrosSistema,
+  guardarParametrosSistema,
+  restablecerParametrosSistema,
+} from '../utils/parametrosSistema';
 
 interface ConfiguracionModalProps {
   isOpen: boolean;
@@ -51,12 +73,26 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   const [endpointUrl, setEndpointUrl] = useState(config.endpointUrl || '');
   const [driveFolderId, setDriveFolderId] = useState(config.driveFolderId || '');
   const [negocio, setNegocio] = useState<DatosNegocio>(() => {
-    if (datosNegocio && datosNegocio.nombre) return datosNegocio;
+    if (datosNegocio && datosNegocio.nombre) {
+      return {
+        ...DEFAULT_DATOS_NEGOCIO,
+        ...datosNegocio,
+        sector: datosNegocio.sector || DEFAULT_DATOS_NEGOCIO.sector,
+        contextoOperativo: datosNegocio.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+      };
+    }
     try {
       const saved = localStorage.getItem('fa_datos_negocio_v1');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.nombre) return parsed;
+        if (parsed && parsed.nombre) {
+          return {
+            ...DEFAULT_DATOS_NEGOCIO,
+            ...parsed,
+            sector: parsed.sector || DEFAULT_DATOS_NEGOCIO.sector,
+            contextoOperativo: parsed.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+          };
+        }
       }
     } catch (e) {
       console.warn('Error al cargar datos negocio en config', e);
@@ -78,7 +114,11 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
     mensaje: string;
     code?: string;
   } | null>(null);
-  const [tabActiva, setTabActiva] = useState<'negocio' | 'sheets' | 'gemini' | 'script' | 'apariencia'>('negocio');
+  const [parametros, setParametros] = useState<ParametrosSistema>(() => obtenerParametrosSistema());
+  const [guardadoExitosoParametros, setGuardadoExitosoParametros] = useState(false);
+  const [tabActiva, setTabActiva] = useState<
+    'negocio' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
+  >('negocio');
 
   if (!isOpen) return null;
 
@@ -152,6 +192,9 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   const handleSave = () => {
     setGuardando(true);
     
+    // Guardar parámetros del sistema en localStorage
+    guardarParametrosSistema(parametros);
+
     // Guardar datos del negocio
     if (onSaveDatosNegocio) {
       onSaveDatosNegocio(negocio);
@@ -175,6 +218,19 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
       setGuardando(false);
       onClose();
     }, 400);
+  };
+
+  const handleGuardarParametrosDirecto = () => {
+    guardarParametrosSistema(parametros);
+    setGuardadoExitosoParametros(true);
+    setTimeout(() => setGuardadoExitosoParametros(false), 2500);
+  };
+
+  const handleRestablecerParametros = () => {
+    const defaults = restablecerParametrosSistema();
+    setParametros(defaults);
+    setGuardadoExitosoParametros(true);
+    setTimeout(() => setGuardadoExitosoParametros(false), 2500);
   };
 
   const handleGuardarNegocioDirecto = () => {
@@ -859,7 +915,7 @@ function handleGetFacturas(sheetId, tabName) {
                 Configuración General y Conexiones
               </h3>
               <p className="text-xs text-slate-400">
-                Datos de Empresa • Google Sheets & Drive • Gemini AI • Apariencia
+                Empresa • Parámetros del Sistema • Google Sheets & Drive • Servidor • Apariencia
               </p>
             </div>
           </div>
@@ -884,6 +940,18 @@ function handleGetFacturas(sheetId, tabName) {
           >
             <Building2 className="w-3.5 h-3.5" />
             <span>Datos de Empresa</span>
+          </button>
+          <button
+            id="tab-parametros-sistema"
+            onClick={() => setTabActiva('parametros')}
+            className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+              tabActiva === 'parametros'
+                ? 'border-rose-500 text-rose-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Parámetros del Sistema</span>
           </button>
           <button
             onClick={() => setTabActiva('sheets')}
@@ -985,6 +1053,39 @@ function handleGetFacturas(sheetId, tabName) {
                   />
                 </div>
 
+                {/* Sector del Negocio */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                    <span>Sector o Industria del Negocio <span className="text-rose-400">*</span></span>
+                    <span className="text-[10px] text-amber-400 font-normal">Obligatorio para Gemini AI</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={negocio.sector || ''}
+                    onChange={(e) => setNegocio({ ...negocio, sector: e.target.value })}
+                    placeholder="Ej. Hostelería, Panadería y Confitería Artesanal / Clínica Dental / Servicios IT"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors"
+                  />
+                </div>
+
+                {/* Contexto Operativo Específico */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                    <span>Contexto Operativo y Modelo de Negocio <span className="text-rose-400">*</span></span>
+                    <span className="text-[10px] text-amber-400 font-normal">Clave para personalizar análisis de IA</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={negocio.contextoOperativo || ''}
+                    onChange={(e) => setNegocio({ ...negocio, contextoOperativo: e.target.value })}
+                    placeholder="Describe las compras principales, insumos críticos, modelo de venta y operativa de tu empresa."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 transition-colors resize-none leading-relaxed"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Todas las peticiones a Gemini incluirán este contexto operativo obligatoriamente para fundamentar sus diagnósticos, alertas y recomendaciones.
+                  </p>
+                </div>
+
                 {/* Dirección / Sede */}
                 <div className="sm:col-span-2 space-y-1.5">
                   <label className="text-[11px] font-bold text-slate-300">
@@ -1070,6 +1171,709 @@ function handleGetFacturas(sheetId, tabName) {
                     <>
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Guardar Datos de Empresa</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tabActiva === 'parametros' && (
+            <div className="space-y-6" id="panel-gestion-parametros">
+              {/* Tarjeta de Cabecera y Acciones Rápidas */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                    <Sliders className="w-4 h-4" />
+                    <span>Gestión Centralizada de Valores Predeterminados y Umbrales</span>
+                  </div>
+                  <p className="text-slate-400 leading-relaxed text-[11px]">
+                    Define los umbrales de alerta de precios, límites de días para facturas recurrentes y reglas analíticas.
+                    Todos los valores se guardan en <code className="text-rose-300 font-mono text-[10px] bg-slate-900 px-1 py-0.5 rounded">localStorage</code> y personalizan el comportamiento de la aplicación en tiempo real.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    id="btn-restablecer-parametros"
+                    onClick={handleRestablecerParametros}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs flex items-center gap-1.5 transition-colors border border-slate-700/60"
+                    title="Revertir todos los parámetros a sus valores predeterminados de fábrica"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Predeterminados</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-guardar-parametros-directo"
+                    onClick={handleGuardarParametrosDirecto}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-950/40 transition-colors"
+                  >
+                    {guardadoExitosoParametros ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>¡Guardado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Guardar Parámetros</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback de éxito */}
+              {guardadoExitosoParametros && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    <strong>Parámetros actualizados con éxito:</strong> Las preferencias se han persistido en tu navegador y los motores de detección y cuadros de mando aplican ahora estos criterios.
+                  </span>
+                </div>
+              )}
+
+              {/* BLOQUE 1: Alertas y Umbrales de Precios */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="uppercase tracking-wider">1. Detección de Anomalías e Incremento de Precios</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">alertasConfig / mockData</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Umbral de Subida Moderada (8% por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Umbral de Alerta Moderada
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono font-bold text-xs border border-amber-500/30">
+                        +{parametros.umbralSubidaModeradaPct}%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Porcentaje de encarecimiento en un producto entre compras sucesivas para generar un aviso preventivo.
+                    </p>
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      step={1}
+                      value={parametros.umbralSubidaModeradaPct}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          umbralSubidaModeradaPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-amber-500 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>Presets rápidos:</span>
+                      <div className="flex gap-1.5">
+                        {[5, 8, 10, 12, 15].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() =>
+                              setParametros({ ...parametros, umbralSubidaModeradaPct: val })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                              parametros.umbralSubidaModeradaPct === val
+                                ? 'bg-amber-500 text-slate-950 font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {val}%{val === 8 ? ' (Defecto)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Umbral de Subida Crítica (15% por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Umbral de Alerta Crítica
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 font-mono font-bold text-xs border border-rose-500/30">
+                        +{parametros.umbralSubidaCriticaPct}%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Subida severa que clasifica la alerta con prioridad crítica y destaca el producto para renegociación urgente.
+                    </p>
+                    <input
+                      type="range"
+                      min={5}
+                      max={50}
+                      step={1}
+                      value={parametros.umbralSubidaCriticaPct}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          umbralSubidaCriticaPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-rose-500 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>Presets rápidos:</span>
+                      <div className="flex gap-1.5">
+                        {[10, 15, 20, 25, 30].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() =>
+                              setParametros({ ...parametros, umbralSubidaCriticaPct: val })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                              parametros.umbralSubidaCriticaPct === val
+                                ? 'bg-rose-500 text-white font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {val}%{val === 15 ? ' (Defecto)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Anticipación de Facturas por Vencer (3 días por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Anticipación de Vencimientos
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 font-mono font-bold text-xs border border-sky-500/30">
+                        {parametros.diasAnticipacionVencimiento} días antes
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Días de antelación para notificar que una factura pendiente se aproxima a su fecha de vencimiento.
+                    </p>
+                    <input
+                      type="range"
+                      min={1}
+                      max={15}
+                      step={1}
+                      value={parametros.diasAnticipacionVencimiento}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          diasAnticipacionVencimiento: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-sky-500 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>Opciones habituales:</span>
+                      <div className="flex gap-1.5">
+                        {[1, 3, 5, 7, 10].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() =>
+                              setParametros({ ...parametros, diasAnticipacionVencimiento: val })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                              parametros.diasAnticipacionVencimiento === val
+                                ? 'bg-sky-500 text-slate-950 font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {val}d{val === 3 ? ' (Defecto)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Concentración de Gasto en un Proveedor (30% por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="check-concentracion"
+                          checked={parametros.notificarConcentracionProveedor}
+                          onChange={(e) =>
+                            setParametros({
+                              ...parametros,
+                              notificarConcentracionProveedor: e.target.checked,
+                            })
+                          }
+                          className="rounded border-slate-700 text-rose-600 focus:ring-rose-500"
+                        />
+                        <label
+                          htmlFor="check-concentracion"
+                          className="text-xs font-semibold text-slate-200 cursor-pointer"
+                        >
+                          Alerta de Concentración
+                        </label>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 font-mono font-bold text-xs border border-purple-500/30">
+                        {parametros.umbralConcentracionProveedorPct}% del gasto
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Avisa si una sola empresa concentra un porcentaje excesivo del presupuesto operativo.
+                    </p>
+                    <input
+                      type="range"
+                      min={10}
+                      max={60}
+                      step={5}
+                      disabled={!parametros.notificarConcentracionProveedor}
+                      value={parametros.umbralConcentracionProveedorPct}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          umbralConcentracionProveedorPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-purple-500 cursor-pointer disabled:opacity-40"
+                    />
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>Presets recomendados:</span>
+                      <div className="flex gap-1.5">
+                        {[20, 25, 30, 40, 50].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            disabled={!parametros.notificarConcentracionProveedor}
+                            onClick={() =>
+                              setParametros({ ...parametros, umbralConcentracionProveedorPct: val })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors disabled:opacity-40 ${
+                              parametros.umbralConcentracionProveedorPct === val
+                                ? 'bg-purple-500 text-white font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {val}%{val === 30 ? ' (Defecto)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOQUE 2: Facturación Recurrente y Ciclos de Operación */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs">
+                    <Clock className="w-4 h-4" />
+                    <span className="uppercase tracking-wider">2. Facturación Recurrente y Ciclo de Vencimiento</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">Gestión Operativa</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Límite de Días para Facturas Recurrentes (30 días por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Ventana de Facturas Recurrentes
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono font-bold text-xs border border-indigo-500/30">
+                        {parametros.limiteDiasFacturasRecurrentes} días
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Límite o ventana temporal de días para identificar y clasificar compras periódicas habituales de un mismo proveedor o contratos de suministros continuados.
+                    </p>
+                    <input
+                      type="range"
+                      min={7}
+                      max={90}
+                      step={1}
+                      value={parametros.limiteDiasFacturasRecurrentes}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          limiteDiasFacturasRecurrentes: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                    <div className="flex flex-wrap items-center justify-between pt-1 gap-2 text-[10px] text-slate-400">
+                      <span>Ciclos habituales:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { dias: 7, etiqueta: 'Semanal' },
+                          { dias: 15, etiqueta: 'Quincenal' },
+                          { dias: 30, etiqueta: 'Mensual (Defecto)' },
+                          { dias: 60, etiqueta: 'Bimestral' },
+                          { dias: 90, etiqueta: 'Trimestral' },
+                        ].map((item) => (
+                          <button
+                            key={item.dias}
+                            type="button"
+                            onClick={() =>
+                              setParametros({
+                                ...parametros,
+                                limiteDiasFacturasRecurrentes: item.dias,
+                              })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                              parametros.limiteDiasFacturasRecurrentes === item.dias
+                                ? 'bg-indigo-500 text-white font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {item.dias}d • {item.etiqueta}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Margen de Cortesía tras Vencimiento (7 días por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Margen de Cortesía tras Vencimiento
+                      </label>
+                      <span className="px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 font-mono font-bold text-xs border border-teal-500/30">
+                        {parametros.diasToleranciaPagoVencido} días de gracia
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Margen de tolerancia concedido tras la fecha límite de pago antes de catalogar el impago como mora en reclamación crítica.
+                    </p>
+                    <input
+                      type="range"
+                      min={0}
+                      max={30}
+                      step={1}
+                      value={parametros.diasToleranciaPagoVencido}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          diasToleranciaPagoVencido: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-teal-500 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                      <span>Plazos comunes:</span>
+                      <div className="flex gap-1.5">
+                        {[0, 3, 7, 15, 30].map((val) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() =>
+                              setParametros({ ...parametros, diasToleranciaPagoVencido: val })
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                              parametros.diasToleranciaPagoVencido === val
+                                ? 'bg-teal-500 text-slate-950 font-bold'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {val}d{val === 7 ? ' (Defecto)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOQUE 3: Clasificación de Proveedores y Dependencia Operativa */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                    <Building2 className="w-4 h-4" />
+                    <span className="uppercase tracking-wider">3. Proveedores y Dependencia en Cadena de Suministro</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">sheetDataSync</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Riesgo Alto (>35% por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Dependencia: Riesgo Alto
+                      </label>
+                      <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono font-bold text-xs">
+                        &gt; {parametros.umbralDependenciaAltaPct}%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Cuota sobre el gasto total para catalogar al proveedor como de alto riesgo de suministro.
+                    </p>
+                    <input
+                      type="range"
+                      min={20}
+                      max={60}
+                      step={1}
+                      value={parametros.umbralDependenciaAltaPct}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          umbralDependenciaAltaPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-rose-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Riesgo Medio (18% - 35% por defecto) */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Dependencia: Riesgo Medio
+                      </label>
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold text-xs">
+                        &gt; {parametros.umbralDependenciaMediaPct}%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Rango intermedio de cuota para catalogar dependencia moderada en compras.
+                    </p>
+                    <input
+                      type="range"
+                      min={10}
+                      max={30}
+                      step={1}
+                      value={parametros.umbralDependenciaMediaPct}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          umbralDependenciaMediaPct: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-amber-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Mínimo de Facturas para Evaluar Concentración */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-200">
+                        Mínimo de Facturas
+                      </label>
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-mono font-bold text-xs border border-slate-700">
+                        {parametros.minimoFacturasParaConcentracion} facturas
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Registros mínimos requeridos antes de computar métricas de concentración de gasto.
+                    </p>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={parametros.minimoFacturasParaConcentracion}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          minimoFacturasParaConcentracion: Number(e.target.value),
+                        })
+                      }
+                      className="w-full accent-slate-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOQUE 4: Preferencias de Visualización y Cuadros de Mando */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold text-xs">
+                    <Calendar className="w-4 h-4" />
+                    <span className="uppercase tracking-wider">4. Preferencias de Visualización y Cuadros de Mando</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">FacturasView / ResumenView</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Facturas por Página */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Facturas por Página
+                    </label>
+                    <select
+                      value={parametros.facturasPorPagina}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          facturasPorPagina: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500"
+                    >
+                      <option value={10}>10 facturas (Predeterminado)</option>
+                      <option value={25}>25 facturas</option>
+                      <option value={50}>50 facturas</option>
+                      <option value={100}>100 facturas</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">Paginación en la tabla de facturas.</p>
+                  </div>
+
+                  {/* Periodo Predeterminado del Dashboard */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Periodo Inicial del Resumen
+                    </label>
+                    <select
+                      value={parametros.periodoDashboardPredeterminado}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          periodoDashboardPredeterminado: e.target.value as any,
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500"
+                    >
+                      <option value="7d">Últimos 7 días</option>
+                      <option value="30d">Últimos 30 días</option>
+                      <option value="trimestre">Trimestre en Curso</option>
+                      <option value="ano">Año Completo (Predeterminado)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">Filtro cargado por defecto en KPIs.</p>
+                  </div>
+
+                  {/* Año Fiscal de Referencia */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Año Fiscal de Referencia
+                    </label>
+                    <select
+                      value={parametros.anoFiscalReferencia}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          anoFiscalReferencia: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 font-mono"
+                    >
+                      <option value={2024}>2024</option>
+                      <option value={2025}>2025</option>
+                      <option value={2026}>2026 (Ejercicio Activo)</option>
+                      <option value={2027}>2027</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">Año contable para balances anuales.</p>
+                  </div>
+
+                  {/* Top Proveedores en Ranking */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Top Proveedores (Ranking)
+                    </label>
+                    <select
+                      value={parametros.topProveedoresRanking}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          topProveedoresRanking: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500"
+                    >
+                      <option value={3}>Top 3</option>
+                      <option value={5}>Top 5 (Predeterminado)</option>
+                      <option value={10}>Top 10</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">Número de filas en el podio de compras.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOQUE 5: Fiscalidad e IVA Predeterminado */}
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                    <Percent className="w-4 h-4" />
+                    <span className="uppercase tracking-wider">5. Fiscalidad e Impuestos Predeterminados</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">IvaView / Contabilidad</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Tipo de IVA Predeterminado para Nuevos Registros
+                    </label>
+                    <select
+                      value={parametros.tipoIvaPredeterminado}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          tipoIvaPredeterminado: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 font-mono"
+                    >
+                      <option value="21%">21% (Régimen General)</option>
+                      <option value="10%">10% (Reducido - Hostelería y Alimentos)</option>
+                      <option value="4%">4% (Superreducido - Harinas y Panadería Básica)</option>
+                      <option value="0%">0% (Operaciones Exentas)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">
+                      Tipo impositivo aplicado de forma automática en facturas sin desglose explícito.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-semibold text-slate-200">
+                        Permitir Facturas Exentas o con IVA al 0%
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Habilita la asignación de cuota cero para operaciones intracomunitarias o suministros exentos.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={parametros.permitirIvaCeroOExento}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          permitirIvaCeroOExento: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 rounded border-slate-700 text-rose-600 focus:ring-rose-500 cursor-pointer shrink-0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón inferior de guardado directo */}
+              <div className="pt-2 flex items-center justify-between border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleRestablecerParametros}
+                  className="text-[11px] text-slate-400 hover:text-slate-200 underline transition-colors"
+                >
+                  Restablecer valores originales de fábrica
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGuardarParametrosDirecto}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-rose-950/40 transition-colors"
+                >
+                  {guardadoExitosoParametros ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>¡Guardado correctamente!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Guardar Parámetros del Sistema</span>
                     </>
                   )}
                 </button>

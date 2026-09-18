@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye, UploadCloud, Loader2 } from 'lucide-react';
+import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye, UploadCloud, Loader2, Sparkles, Edit3 } from 'lucide-react';
 import { Factura } from '../types';
 
 interface FacturaDetalleModalProps {
@@ -8,6 +8,7 @@ interface FacturaDetalleModalProps {
   onDelete?: (factura: Factura) => void;
   onAbrirVisor?: (factura: Factura) => void;
   onUploadToDrive?: (factura: Factura) => Promise<any> | void;
+  onEditarEnFormulario?: (factura: Factura) => void;
 }
 
 export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
@@ -16,6 +17,7 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
   onDelete,
   onAbrirVisor,
   onUploadToDrive,
+  onEditarEnFormulario,
 }) => {
   const [subiendoDrive, setSubiendoDrive] = useState(false);
   if (!factura) return null;
@@ -121,6 +123,24 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
               {factura.concepto}
             </div>
           </div>
+
+          {/* Categoría Propuesta por Gemini */}
+          {factura.categoriaGastoJustificacion && (
+            <div className="p-3 rounded-xl bg-gradient-to-r from-slate-900 to-slate-900/90 border border-amber-500/30 flex items-start gap-2.5 text-xs text-slate-300">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <span>Categoría propuesta automáticamente por Gemini:</span>
+                  <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px]">
+                    {factura.categoriaGasto}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                  {factura.categoriaGastoJustificacion}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Product Lines Breakdown */}
           <div>
@@ -335,6 +355,19 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
           ) : <div />}
 
           <div className="flex items-center gap-2">
+            {onEditarEnFormulario && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEditarEnFormulario(factura);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-950/40 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Editar en Formulario</span>
+              </button>
+            )}
             {onAbrirVisor && (
               <button
                 type="button"

@@ -40,13 +40,20 @@ export const ChatFacturasModal: React.FC<ChatFacturasModalProps> = ({
   alertas,
   datosNegocio,
 }) => {
-  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
+  const resolvedDatosNegocio: DatosNegocio = {
+    ...DEFAULT_DATOS_NEGOCIO,
+    ...datosNegocio,
+    sector: datosNegocio?.sector || DEFAULT_DATOS_NEGOCIO.sector,
+    contextoOperativo: datosNegocio?.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+  };
+  const nombreNegocio = resolvedDatosNegocio.nombre;
+  const sectorNegocio = resolvedDatosNegocio.sector || DEFAULT_DATOS_NEGOCIO.sector;
 
   const [mensajes, setMensajes] = useState<MensajeChat[]>(() => [
     {
       id: 'm-initial',
       emisor: 'asistente',
-      texto: `¡Hola! Soy **Finance AI**, tu analista financiero en ${nombreNegocio}. Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
+      texto: `¡Hola! Soy **Finance AI**, tu analista financiero en **${nombreNegocio}** (${sectorNegocio}). Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -58,13 +65,13 @@ export const ChatFacturasModal: React.FC<ChatFacturasModalProps> = ({
         return [
           {
             ...prev[0],
-            texto: `¡Hola! Soy **Finance AI**, tu analista financiero en ${nombreNegocio}. Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
+            texto: `¡Hola! Soy **Finance AI**, tu analista financiero en **${nombreNegocio}** (${sectorNegocio}). Puedo resolver cualquier duda sobre tus facturas, variaciones de precios, proveedores y gastos registrados.\n\n¿En qué puedo ayudarte hoy?`,
           },
         ];
       }
       return prev;
     });
-  }, [nombreNegocio]);
+  }, [nombreNegocio, sectorNegocio]);
 
   const [inputTexto, setInputTexto] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -102,6 +109,9 @@ export const ChatFacturasModal: React.FC<ChatFacturasModalProps> = ({
           mensaje: textoLimpio,
           historial: mensajes,
           nombreNegocio,
+          datosNegocio: resolvedDatosNegocio,
+          sector: sectorNegocio,
+          contextoOperativo: resolvedDatosNegocio.contextoOperativo,
           facturas,
           proveedores,
           alertas,

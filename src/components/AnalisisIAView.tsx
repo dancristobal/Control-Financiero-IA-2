@@ -37,7 +37,14 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
   onUpdateAnalisis,
 }) => {
   const [loading, setLoading] = useState(false);
-  const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
+  const resolvedDatosNegocio: DatosNegocio = {
+    ...DEFAULT_DATOS_NEGOCIO,
+    ...datosNegocio,
+    sector: datosNegocio?.sector || DEFAULT_DATOS_NEGOCIO.sector,
+    contextoOperativo: datosNegocio?.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+  };
+  const nombreNegocio = resolvedDatosNegocio.nombre;
+  const sectorNegocio = resolvedDatosNegocio.sector || DEFAULT_DATOS_NEGOCIO.sector;
 
   const ejecutarAnalisisConGemini = async () => {
     setLoading(true);
@@ -47,6 +54,9 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nombreNegocio,
+          datosNegocio: resolvedDatosNegocio,
+          sector: sectorNegocio,
+          contextoOperativo: resolvedDatosNegocio.contextoOperativo,
           facturas,
           proveedores,
           alertas,
@@ -79,7 +89,7 @@ export const AnalisisIAView: React.FC<AnalisisIAViewProps> = ({
               Gemini Financial Intelligence
             </span>
             <span className="text-xs text-slate-300 font-medium">
-              Auditoría Ejecutiva de {nombreNegocio}
+              Auditoría Ejecutiva • {nombreNegocio} ({sectorNegocio})
             </span>
           </div>
           <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-100 mt-1 tracking-tight">

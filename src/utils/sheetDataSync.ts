@@ -1,4 +1,6 @@
-import { Factura, Proveedor, Alerta } from '../types';
+import { Factura, Proveedor, Alerta, ConfiguracionAlertas } from '../types';
+import { obtenerConfiguracionAlertas, evaluarSubidasPrecioDesdeFacturas } from './alertasConfig';
+import { obtenerParametrosSistema } from './parametrosSistema';
 
 /**
  * Genera la lista consolidada de proveedores a partir de las facturas reales de Google Sheets
@@ -45,11 +47,25 @@ export function generarProveedoresDesdeFacturas(facturas: Factura[]): Proveedor[
   });
 
   const totalGastoGlobal = facturas.reduce((sum, f) => sum + f.total, 0) || 1;
+  const params = obtenerParametrosSistema();
+  const umbralAlto = (params.umbralDependenciaAltaPct || 35) / 100;
+  const umbralMedio = (params.umbralDependenciaMediaPct || 18) / 100;
+  const minFacturas =
+    typeof params.minimoFacturasParaConcentracion === 'number' && params.minimoFacturasParaConcentracion >= 1
+      ? params.minimoFacturasParaConcentracion
+      : 3;
+  const puedeEvaluarConcentracion = facturas.length >= minFacturas && mapProveedores.size > 1;
 
   return Array.from(mapProveedores.values()).map((p, idx) => {
     const share = p.total / totalGastoGlobal;
     const riesgo: 'Bajo' | 'Medio' | 'Alto' =
-      share > 0.35 ? 'Alto' : share > 0.18 ? 'Medio' : 'Bajo';
+      puedeEvaluarConcentracion
+        ? share > umbralAlto
+          ? 'Alto'
+          : share > umbralMedio
+          ? 'Medio'
+          : 'Bajo'
+        : 'Bajo';
     const frecuencia = p.count >= 8 ? 'Semanal' : p.count >= 4 ? 'Quincenal' : 'Mensual';
     const productos =
       Array.from(p.conceptos).slice(0, 3).join(', ') ||
@@ -77,13 +93,22 @@ export function generarProveedoresDesdeFacturas(facturas: Factura[]): Proveedor[
 /**
  * Genera alertas analíticas automáticas basadas estrictamente en las facturas reales
  */
-export function generarAlertasDesdeFacturas(facturas: Factura[]): Alerta[] {
+export function generarAlertasDesdeFacturas(
+  facturas: Factura[],
+  configPersonalizada?: ConfiguracionAlertas
+): Alerta[] {
   if (!facturas || facturas.length === 0) return [];
 
+  const config = configPersonalizada || obtenerConfiguracionAlertas();
+  const params = obtenerParametrosSistema();
   const alertas: Alerta[] = [];
   const hoy = new Date().toISOString().split('T')[0];
 
-  // 1. Facturas vencidas o pendientes pasadas de fecha
+  // 1. Subidas de precio según umbrales configurados
+  const alertasSubida = evaluarSubidasPrecioDesdeFacturas(facturas, config);
+  alertas.push(...alertasSubida);
+
+  // 2. Facturas vencidas o pendientes pasadas de fecha
   const vencidas = facturas.filter(
     (f) =>
       f.estado === 'Vencida' ||
@@ -108,7 +133,7 @@ export function generarAlertasDesdeFacturas(facturas: Factura[]): Alerta[] {
     });
   });
 
-  // 2. Posibles identificadores duplicados
+  // 3. Posibles identificadores duplicados
   const idCounts = new Map<string, number>();
   facturas.forEach((f) => {
     idCounts.set(f.idFactura, (idCounts.get(f.idFactura) || 0) + 1);
@@ -127,8 +152,9 @@ export function generarAlertasDesdeFacturas(facturas: Factura[]): Alerta[] {
     }
   });
 
-  // 3. Concentración de proveedor (> 30% del volumen total)
-  // Solo se evalúa cuando hay al menos 3 facturas y más de 1 proveedor distinto
+  // 4. Concentración de proveedor (> umbral configurado o 30%)
+  // Solo se evalúa cuando hay al menos el número mínimo de facturas configurado en el sistema (por defecto >= 3 facturas)
+  // y más de 1 proveedor (> 1) para evitar falsas alertas al inicio del ejercicio o con pocas facturas registradas.
   const totalGasto = facturas.reduce((s, f) => s + f.total, 0);
   const proveedorSpend = new Map<string, { nombre: string; total: number }>();
   facturas.forEach((f) => {
@@ -137,9 +163,18 @@ export function generarAlertasDesdeFacturas(facturas: Factura[]): Alerta[] {
     proveedorSpend.set(f.idProveedor, entry);
   });
 
-  if (facturas.length >= 3 && proveedorSpend.size > 1 && totalGasto > 0) {
+  const notificarConcentracion =
+    config.notificarConcentracionProveedor !== false &&
+    params.notificarConcentracionProveedor !== false;
+  const umbralRatio = (config.umbralConcentracionPct ?? params.umbralConcentracionProveedorPct ?? 30) / 100;
+  const minFacturas =
+    typeof params.minimoFacturasParaConcentracion === 'number' && params.minimoFacturasParaConcentracion >= 1
+      ? params.minimoFacturasParaConcentracion
+      : 3;
+
+  if (notificarConcentracion && facturas.length >= minFacturas && proveedorSpend.size > 1 && totalGasto > 0) {
     proveedorSpend.forEach((data, idProv) => {
-      if (data.total / totalGasto > 0.3) {
+      if (data.total / totalGasto > umbralRatio) {
         const pct = Math.round((data.total / totalGasto) * 100);
         alertas.push({
           id: `ALT-CONC-${idProv}`,
@@ -149,7 +184,7 @@ export function generarAlertasDesdeFacturas(facturas: Factura[]): Alerta[] {
           descripcion: `Este proveedor concentra el ${pct}% del total de gasto de la empresa (${data.total.toLocaleString(
             'es-ES',
             { style: 'currency', currency: 'EUR' }
-          )}).`,
+          )}), superando el umbral de concentración configurado (${Math.round(umbralRatio * 100)}%).`,
           fecha: hoy,
           estado: 'activa',
           datosRelacionados: {

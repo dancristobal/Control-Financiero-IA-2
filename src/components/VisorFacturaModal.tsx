@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Eye,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { Factura, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 
@@ -506,6 +507,24 @@ export const VisorFacturaModal: React.FC<VisorFacturaModalProps> = ({
                     {factura.concepto}
                   </p>
                 </div>
+
+                {/* Categoría Propuesta por Gemini */}
+                {factura.categoriaGastoJustificacion && (
+                  <div className="mb-4 bg-amber-50 border border-amber-200/80 rounded-lg p-2.5 text-xs text-amber-900 flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                        <span>Categoría propuesta con IA:</span>
+                        <span className="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 font-bold text-[10px]">
+                          {factura.categoriaGasto}
+                        </span>
+                      </span>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        {factura.categoriaGastoJustificacion}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Desglose de Líneas de Factura si existen */}
                 {factura.lineas && factura.lineas.length > 0 ? (

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -13,7 +13,8 @@ import {
   DollarSign,
   Layers,
   ChevronRight,
-  Printer
+  Printer,
+  Percent
 } from 'lucide-react';
 import {
   AreaChart,
@@ -31,6 +32,7 @@ import {
   Legend
 } from 'recharts';
 import { Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { obtenerParametrosSistema } from '../utils/parametrosSistema';
 
 interface ResumenViewProps {
   facturas: Factura[];
@@ -65,13 +67,42 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
   onOpenPdfReport,
 }) => {
   const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
-  const [periodo, setPeriodo] = useState<PeriodFilter>('ano');
-  const [customStart, setCustomStart] = useState('2026-01-01');
-  const [customEnd, setCustomEnd] = useState('2026-08-31');
+  const [parametrosActivos, setParametrosActivos] = useState(() => obtenerParametrosSistema());
+  const [periodo, setPeriodo] = useState<PeriodFilter>(() => {
+    try {
+      return obtenerParametrosSistema().periodoDashboardPredeterminado || 'ano';
+    } catch {
+      return 'ano';
+    }
+  });
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Escuchar cambios en los parámetros del sistema en tiempo real
+  useEffect(() => {
+    const handleParamsActualizados = (e: any) => {
+      const nuevosParams = e?.detail || obtenerParametrosSistema();
+      setParametrosActivos(nuevosParams);
+      if (nuevosParams.periodoDashboardPredeterminado) {
+        setPeriodo(nuevosParams.periodoDashboardPredeterminado);
+      }
+    };
+    window.addEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    return () => {
+      window.removeEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    };
+  }, []);
 
   // Filter facturas based on period
   const facturasFiltradas = useMemo(() => {
-    const now = new Date('2026-08-31T23:59:59'); // Baseline benchmark in 2026
+    const anoRef = parametrosActivos.anoFiscalReferencia || new Date().getFullYear();
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+
     return facturas.filter((f) => {
       const fDate = new Date(f.fechaEmision);
       if (periodo === '7d') {
@@ -83,11 +114,17 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         return diffDays >= 0 && diffDays <= 30;
       }
       if (periodo === 'trimestre') {
-        // Trimestre 3 (Julio - Septiembre)
-        return fDate.getMonth() >= 6 && fDate.getMonth() <= 8;
+        // Trimestre actual basado en la fecha del sistema
+        const m = fDate.getMonth();
+        const mesInicioTrimestre = Math.floor(now.getMonth() / 3) * 3;
+        return (
+          fDate.getFullYear() === now.getFullYear() &&
+          m >= mesInicioTrimestre &&
+          m <= mesInicioTrimestre + 2
+        );
       }
       if (periodo === 'ano') {
-        return fDate.getFullYear() === 2026;
+        return fDate.getFullYear() === anoRef;
       }
       if (periodo === 'personalizado') {
         return (
@@ -97,7 +134,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
       }
       return true;
     });
-  }, [facturas, periodo, customStart, customEnd]);
+  }, [facturas, periodo, customStart, customEnd, parametrosActivos.anoFiscalReferencia]);
 
   // KPIs Calculations
   const gastoTotal = useMemo(
@@ -129,7 +166,130 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
     [alertas]
   );
 
-  // Evolución Mensual de Gastos (Enero - Agosto)
+  // Variación Porcentual Automática del Gasto Total (Mes Actual frente al Anterior)
+  const metricasMesVsMes = useMemo(() => {
+    if (!facturas || facturas.length === 0) {
+      return {
+        gastoMesActual: 0,
+        gastoMesAnterior: 0,
+        diferencia: 0,
+        variacionPorcentaje: 0,
+        mesActualNombre: 'Mes actual',
+        mesAnteriorNombre: 'Mes anterior',
+        mesActualCorto: 'Actual',
+        mesAnteriorCorto: 'Anterior',
+        facturasMesActual: 0,
+        facturasMesAnterior: 0,
+        tieneDatosSuficientes: false,
+        tendencia: 'neutral' as 'subida' | 'bajada' | 'neutral',
+      };
+    }
+
+    // Agrupar facturas por año-mes ('YYYY-MM') sumando el gasto total real
+    const gastoPorMes: Record<string, { total: number; facturas: number; fecha: Date }> = {};
+
+    facturas.forEach((f) => {
+      if (!f.fechaEmision) return;
+      const partes = f.fechaEmision.split('-');
+      if (partes.length >= 2) {
+        const key = `${partes[0]}-${partes[1]}`;
+        const totalFactura = typeof f.total === 'number' && !isNaN(f.total) ? f.total : (f.importe || 0);
+        if (!gastoPorMes[key]) {
+          const y = parseInt(partes[0], 10);
+          const m = parseInt(partes[1], 10);
+          gastoPorMes[key] = {
+            total: 0,
+            facturas: 0,
+            fecha: new Date(y, m - 1, 1),
+          };
+        }
+        gastoPorMes[key].total += totalFactura;
+        gastoPorMes[key].facturas += 1;
+      }
+    });
+
+    const mesesOrdenados = Object.keys(gastoPorMes).sort();
+    if (mesesOrdenados.length === 0) {
+      return {
+        gastoMesActual: 0,
+        gastoMesAnterior: 0,
+        diferencia: 0,
+        variacionPorcentaje: 0,
+        mesActualNombre: 'Sin datos',
+        mesAnteriorNombre: 'Sin datos',
+        mesActualCorto: 'Actual',
+        mesAnteriorCorto: 'Anterior',
+        facturasMesActual: 0,
+        facturasMesAnterior: 0,
+        tieneDatosSuficientes: false,
+        tendencia: 'neutral' as 'subida' | 'bajada' | 'neutral',
+      };
+    }
+
+    // Determinar el mes actual:
+    // Si el mes de calendario de hoy tiene facturas registradas, se toma;
+    // de lo contrario, se toma el mes más reciente con registros en el histórico de facturas.
+    const hoy = new Date();
+    const hoyKey = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+    const mesActualKey = gastoPorMes[hoyKey] ? hoyKey : mesesOrdenados[mesesOrdenados.length - 1];
+
+    // Determinar el mes anterior cronológico (1 mes antes en el calendario)
+    const [yActual, mActual] = mesActualKey.split('-').map((n) => parseInt(n, 10));
+    const fechaMesAnterior = new Date(yActual, mActual - 2, 1);
+    const mesAnteriorKey = `${fechaMesAnterior.getFullYear()}-${String(fechaMesAnterior.getMonth() + 1).padStart(2, '0')}`;
+
+    const infoActual = gastoPorMes[mesActualKey] || {
+      total: 0,
+      facturas: 0,
+      fecha: new Date(yActual, mActual - 1, 1),
+    };
+    const infoAnterior = gastoPorMes[mesAnteriorKey] || {
+      total: 0,
+      facturas: 0,
+      fecha: fechaMesAnterior,
+    };
+
+    const gastoMesActual = Math.round(infoActual.total * 100) / 100;
+    const gastoMesAnterior = Math.round(infoAnterior.total * 100) / 100;
+    const diferencia = Math.round((gastoMesActual - gastoMesAnterior) * 100) / 100;
+
+    let variacionPorcentaje = 0;
+    if (gastoMesAnterior > 0) {
+      variacionPorcentaje = ((gastoMesActual - gastoMesAnterior) / gastoMesAnterior) * 100;
+    } else if (gastoMesActual > 0) {
+      variacionPorcentaje = 100;
+    }
+
+    const formateador = new Intl.DateTimeFormat('es-ES', { month: 'short', year: 'numeric' });
+    const formateadorMesCorto = new Intl.DateTimeFormat('es-ES', { month: 'short' });
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace('.', '');
+
+    const mesActualNombre = cap(formateador.format(infoActual.fecha));
+    const mesAnteriorNombre = cap(formateador.format(infoAnterior.fecha));
+    const mesActualCorto = cap(formateadorMesCorto.format(infoActual.fecha));
+    const mesAnteriorCorto = cap(formateadorMesCorto.format(infoAnterior.fecha));
+
+    let tendencia: 'subida' | 'bajada' | 'neutral' = 'neutral';
+    if (variacionPorcentaje > 0.1) tendencia = 'subida';
+    else if (variacionPorcentaje < -0.1) tendencia = 'bajada';
+
+    return {
+      gastoMesActual,
+      gastoMesAnterior,
+      diferencia,
+      variacionPorcentaje: Math.round(variacionPorcentaje * 10) / 10,
+      mesActualNombre,
+      mesAnteriorNombre,
+      mesActualCorto,
+      mesAnteriorCorto,
+      facturasMesActual: infoActual.facturas,
+      facturasMesAnterior: infoAnterior.facturas,
+      tieneDatosSuficientes: gastoMesAnterior > 0,
+      tendencia,
+    };
+  }, [facturas]);
+
+  // Evolución Mensual de Gastos (Enero - Diciembre)
   const datosEvolucionMensual = useMemo(() => {
     const meses = [
       { mes: 'Ene', num: 0, gasto: 0, iva: 0, facturas: 0 },
@@ -140,13 +300,17 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
       { mes: 'Jun', num: 5, gasto: 0, iva: 0, facturas: 0 },
       { mes: 'Jul', num: 6, gasto: 0, iva: 0, facturas: 0 },
       { mes: 'Ago', num: 7, gasto: 0, iva: 0, facturas: 0 },
+      { mes: 'Sep', num: 8, gasto: 0, iva: 0, facturas: 0 },
+      { mes: 'Oct', num: 9, gasto: 0, iva: 0, facturas: 0 },
+      { mes: 'Nov', num: 10, gasto: 0, iva: 0, facturas: 0 },
+      { mes: 'Dic', num: 11, gasto: 0, iva: 0, facturas: 0 },
     ];
 
     facturas.forEach((f) => {
       const m = new Date(f.fechaEmision).getMonth();
-      if (m >= 0 && m < 8) {
-        meses[m].gasto += f.total;
-        meses[m].iva += f.cuotaIVA;
+      if (m >= 0 && m < 12) {
+        meses[m].gasto += f.total || 0;
+        meses[m].iva += f.cuotaIVA || 0;
         meses[m].facturas += 1;
       }
     });
@@ -182,6 +346,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
       map[p].facturas += 1;
     });
 
+    const topLimit = parametrosActivos.topProveedoresRanking || 5;
     return Object.entries(map)
       .map(([nombre, d]) => ({
         nombre: nombre.length > 22 ? nombre.substring(0, 20) + '...' : nombre,
@@ -190,8 +355,8 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         facturas: d.facturas,
       }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [facturasFiltradas]);
+      .slice(0, topLimit);
+  }, [facturasFiltradas, parametrosActivos.topProveedoresRanking]);
 
   // Alerta Crítica Principal si existe
   const alertaCritica = useMemo(() => {
@@ -264,7 +429,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Año 2026
+              Año {parametrosActivos.anoFiscalReferencia || new Date().getFullYear()}
             </button>
             <button
               id="filter-custom"
@@ -363,8 +528,8 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         </div>
       )}
 
-      {/* KPI Grid: 6 Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* KPI Grid: Key Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
         {/* KPI 1: Gasto Total Acumulado */}
         <div
           id="kpi-gasto-total"
@@ -393,9 +558,24 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-            <div className="flex items-center gap-1 text-rose-400 font-semibold text-[11px]">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+14.2%</span>
+            <div
+              className={`flex items-center gap-1 font-semibold text-[11px] ${
+                metricasMesVsMes.tendencia === 'subida'
+                  ? 'text-rose-400'
+                  : metricasMesVsMes.tendencia === 'bajada'
+                  ? 'text-emerald-400'
+                  : 'text-slate-400'
+              }`}
+            >
+              {metricasMesVsMes.tendencia === 'subida' ? (
+                <TrendingUp className="w-3.5 h-3.5" />
+              ) : metricasMesVsMes.tendencia === 'bajada' ? (
+                <TrendingDown className="w-3.5 h-3.5" />
+              ) : null}
+              <span>
+                {metricasMesVsMes.variacionPorcentaje > 0 ? '+' : ''}
+                {metricasMesVsMes.variacionPorcentaje.toFixed(1)}% MoM
+              </span>
             </div>
             <span className="text-[11px] text-slate-400">
               {facturasFiltradas.length} ops
@@ -403,7 +583,96 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* KPI 2: Número de Facturas */}
+        {/* KPI 2: Variación Mensual del Gasto (Mes actual vs. Mes anterior) */}
+        <div
+          id="kpi-variacion-mensual"
+          className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80 hover:border-slate-700 transition-all flex flex-col justify-between group relative overflow-hidden shadow-lg shadow-black/10"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              2. Variación MoM
+            </span>
+            <div
+              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                metricasMesVsMes.tendencia === 'subida'
+                  ? 'bg-rose-500/15 text-rose-400'
+                  : metricasMesVsMes.tendencia === 'bajada'
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              {metricasMesVsMes.tendencia === 'subida' ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : metricasMesVsMes.tendencia === 'bajada' ? (
+                <TrendingDown className="w-4 h-4" />
+              ) : (
+                <Percent className="w-4 h-4" />
+              )}
+            </div>
+          </div>
+
+          <div className="my-3">
+            <div className="flex items-baseline gap-2">
+              <div
+                className={`text-2xl lg:text-3xl font-extrabold tracking-tight ${
+                  metricasMesVsMes.tendencia === 'subida'
+                    ? 'text-rose-400'
+                    : metricasMesVsMes.tendencia === 'bajada'
+                    ? 'text-emerald-400'
+                    : 'text-slate-100'
+                }`}
+              >
+                {metricasMesVsMes.variacionPorcentaje > 0 ? '+' : ''}
+                {metricasMesVsMes.variacionPorcentaje.toFixed(1)}%
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                  metricasMesVsMes.tendencia === 'subida'
+                    ? 'bg-rose-500/20 text-rose-300'
+                    : metricasMesVsMes.tendencia === 'bajada'
+                    ? 'bg-emerald-500/20 text-emerald-300'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {metricasMesVsMes.tendencia === 'subida'
+                  ? 'Incremento'
+                  : metricasMesVsMes.tendencia === 'bajada'
+                  ? 'Reducción'
+                  : 'Estable'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
+              {metricasMesVsMes.mesActualNombre} vs. {metricasMesVsMes.mesAnteriorNombre}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+            <span
+              className={`font-semibold text-[11px] ${
+                metricasMesVsMes.diferencia > 0
+                  ? 'text-rose-400'
+                  : metricasMesVsMes.diferencia < 0
+                  ? 'text-emerald-400'
+                  : 'text-slate-400'
+              }`}
+            >
+              {metricasMesVsMes.diferencia > 0 ? '+' : ''}
+              {metricasMesVsMes.diferencia.toLocaleString('es-ES', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              €
+            </span>
+            <span
+              className="text-[11px] text-slate-400"
+              title={`Gasto en ${metricasMesVsMes.mesAnteriorNombre}: ${metricasMesVsMes.gastoMesAnterior.toLocaleString('es-ES')} €`}
+            >
+              Ant: {metricasMesVsMes.gastoMesAnterior.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €
+            </span>
+          </div>
+        </div>
+
+        {/* KPI 3: Número de Facturas */}
         <div
           id="kpi-facturas"
           onClick={() => onNavigate('facturas')}
@@ -411,7 +680,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              2. Facturas
+              3. Facturas
             </span>
             <FileText className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors" />
           </div>
@@ -434,14 +703,14 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* KPI 3: Gasto Medio por Factura */}
+        {/* KPI 4: Gasto Medio por Factura */}
         <div
           id="kpi-gasto-medio"
           className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80 flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              3. Gasto Medio
+              4. Gasto Medio
             </span>
             <Layers className="w-4 h-4 text-slate-400" />
           </div>
@@ -462,7 +731,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* KPI 4: IVA Soportado */}
+        {/* KPI 5: IVA Soportado */}
         <div
           id="kpi-iva-soportado"
           onClick={() => onNavigate('iva')}
@@ -470,7 +739,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              4. IVA Soportado
+              5. IVA Soportado
             </span>
             <Receipt className="w-4 h-4 text-sky-400" />
           </div>
@@ -494,7 +763,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* KPI 5: Proveedores */}
+        {/* KPI 6: Proveedores */}
         <div
           id="kpi-proveedores"
           onClick={() => onNavigate('proveedores')}
@@ -502,7 +771,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              5. Proveedores
+              6. Proveedores
             </span>
             <Building2 className="w-4 h-4 text-amber-400" />
           </div>
@@ -524,7 +793,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* KPI 6: Alertas Activas (Directamente después de Proveedores) */}
+        {/* KPI 7: Alertas Activas (Directamente después de Proveedores) */}
         <div
           id="kpi-alertas-activas"
           onClick={() => onNavigate('alertas')}
@@ -532,7 +801,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              6. Alertas Activas
+              7. Alertas Activas
             </span>
             <div
               className={`w-7 h-7 rounded-lg flex items-center justify-center ${
@@ -588,7 +857,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
             <div>
               <h3 className="text-base font-bold text-slate-100">
-                1. Evolución Mensual de Gastos e IVA (2026)
+                1. Evolución Mensual de Gastos e IVA ({parametrosActivos.anoFiscalReferencia || new Date().getFullYear()})
               </h3>
               <p className="text-xs text-slate-300 mt-0.5">
                 Volumen acumulado de facturación (€) y cuota fiscal por mes
@@ -770,12 +1039,12 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
         </div>
 
-        {/* Chart 5: Número de Facturas por Mes */}
+        {/* Chart 4: Número de Facturas por Mes */}
         <div className="p-6 rounded-2xl bg-[#101726] border border-slate-800/80">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-base font-bold text-slate-100">
-                5. Número de Facturas Procesadas por Mes
+                4. Número de Facturas Procesadas por Mes
               </h3>
               <p className="text-xs text-slate-300 mt-0.5">
                 Ritmo operativo de emisión y recepción contable

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Printer,
@@ -14,6 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Factura, Proveedor, Alerta, AnalisisEjecutivo, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { obtenerParametrosSistema } from '../utils/parametrosSistema';
 
 interface InformePdfModalProps {
   isOpen: boolean;
@@ -35,7 +36,53 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
   datosNegocio,
 }) => {
   const [paginaActual, setPaginaActual] = useState(1);
+  const [parametrosActivos, setParametrosActivos] = useState(() => obtenerParametrosSistema());
   const totalPaginas = 9;
+
+  useEffect(() => {
+    const handleParamsActualizados = (e: any) => {
+      const nuevosParams = e?.detail || obtenerParametrosSistema();
+      setParametrosActivos(nuevosParams);
+    };
+    window.addEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    return () => {
+      window.removeEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    };
+  }, []);
+
+  const anoFiscal = parametrosActivos.anoFiscalReferencia || new Date().getFullYear();
+
+  // Periodo auditado dinámico basado en las fechas de las facturas registradas
+  const periodoAuditado = useMemo(() => {
+    if (!facturas || facturas.length === 0) {
+      const mesActual = new Date().toLocaleDateString('es-ES', { month: 'long' });
+      return `Enero — ${mesActual.charAt(0).toUpperCase() + mesActual.slice(1)} ${anoFiscal}`;
+    }
+
+    const fechasOrdenadas = facturas
+      .map((f) => new Date(f.fechaEmision))
+      .filter((d) => !isNaN(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (fechasOrdenadas.length === 0) {
+      return `Ejercicio Fiscal ${anoFiscal}`;
+    }
+
+    const fechaMin = fechasOrdenadas[0];
+    const fechaMax = fechasOrdenadas[fechasOrdenadas.length - 1];
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+    const mesInicio = fechaMin.toLocaleDateString('es-ES', { month: 'long' });
+    const mesFin = fechaMax.toLocaleDateString('es-ES', { month: 'long' });
+
+    if (fechaMin.getFullYear() === fechaMax.getFullYear()) {
+      if (mesInicio === mesFin) {
+        return `${cap(mesInicio)} ${fechaMin.getFullYear()}`;
+      }
+      return `${cap(mesInicio)} — ${cap(mesFin)} ${fechaMin.getFullYear()}`;
+    }
+    return `${cap(mesInicio)} ${fechaMin.getFullYear()} — ${cap(mesFin)} ${fechaMax.getFullYear()}`;
+  }, [facturas, anoFiscal]);
 
   const negocio = datosNegocio && datosNegocio.nombre ? datosNegocio : DEFAULT_DATOS_NEGOCIO;
 
@@ -141,7 +188,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                   {negocio.nombre}
                 </h2>
                 <p className="text-sm text-slate-400 mt-2 max-w-lg leading-relaxed">
-                  {negocio.actividad || 'Control Financiero y Auditoría de Gastos'} • Ejercicio Económico 2026
+                  {negocio.actividad || 'Control Financiero y Auditoría de Gastos'} • Ejercicio Económico {anoFiscal}
                 </p>
               </div>
             </div>
@@ -157,7 +204,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                   })}
                 </div>
                 <div>
-                  <strong>Periodo Auditado:</strong> Enero — Agosto 2026
+                  <strong>Periodo Auditado:</strong> {periodoAuditado}
                 </div>
                 <div>
                   <strong>Facturas Analizadas:</strong> {facturas.length} registros contables
@@ -199,7 +246,7 @@ export const InformePdfModal: React.FC<InformePdfModalProps> = ({
                 Aspectos Operativos Destacados
               </h4>
               <p>
-                Durante el periodo de 2026 analizado, {negocio.nombre} ha formalizado un volumen total
+                Durante el periodo de {anoFiscal} analizado, {negocio.nombre} ha formalizado un volumen total
                 de <strong>{totalGasto.toLocaleString('es-ES')} €</strong> distribuidos en{' '}
                 <strong>{facturas.length} facturas</strong> registradas y vinculadas con la hoja de
                 cálculo corporativa.

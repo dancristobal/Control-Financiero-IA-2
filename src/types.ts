@@ -21,12 +21,18 @@ export interface Factura {
   cuotaIVA: number;
   total: number;
   categoriaGasto:
+    | 'Insumos'
+    | 'Logística'
+    | 'Servicios'
     | 'Materias Primas'
     | 'Envases y Embalajes'
     | 'Suministros y Energía'
     | 'Logística y Transporte'
     | 'Mantenimiento y Maquinaria'
-    | 'Servicios y Gestión';
+    | 'Servicios y Gestión'
+    | string;
+  categoriaGastoJustificacion?: string;
+  categoriaGastoSugerida?: boolean;
   lineas?: ProductoLinea[];
   archivoNombre?: string;
   archivoBase64?: string;
@@ -179,15 +185,96 @@ export interface DatosNegocio {
   nif: string;
   direccion: string;
   actividad?: string;
+  sector?: string;
+  contextoOperativo?: string;
   email?: string;
   telefono?: string;
 }
+
+export interface ConfiguracionAlertas {
+  umbralSubidaModeradaPct: number; // Ej: 8% (por defecto aviso / nivel alta)
+  umbralSubidaCriticaPct: number;   // Ej: 15% (nivel crítica)
+  notificarConcentracionProveedor?: boolean;
+  umbralConcentracionPct?: number;  // Ej: 30%
+  notificarFacturasVencidas?: boolean;
+  diasAnticipacionVencimiento?: number; // Ej: 3 días antes
+  actualizadoEn?: string;
+}
+
+export const DEFAULT_CONFIGURACION_ALERTAS: ConfiguracionAlertas = {
+  umbralSubidaModeradaPct: 8,
+  umbralSubidaCriticaPct: 15,
+  notificarConcentracionProveedor: true,
+  umbralConcentracionPct: 30,
+  notificarFacturasVencidas: true,
+  diasAnticipacionVencimiento: 3,
+};
 
 export const DEFAULT_DATOS_NEGOCIO: DatosNegocio = {
   nombre: 'Pastelería y Confitería Dulce Capricho S.L.',
   nif: 'B-82910394',
   direccion: 'C/ Mayor 24, Obrador Central',
   actividad: 'Obrador y Confitería Artesanal',
+  sector: 'Hostelería, Obrador de Pastelería y Panadería',
+  contextoOperativo:
+    'Obrador artesanal con despacho directo y distribución B2B a cafeterías y hostelería. Sus compras principales abarcan materias primas agrícolas (harinas especiales, mantequillas, coberturas, azúcares), cajas y envoltorios kraft para take-away, suministros energéticos intensivos en hornos y servicios de transporte refrigerado.',
   email: 'administracion@dulcecapricho.com',
   telefono: '+34 912 345 678',
+};
+
+export interface ParametrosSistema {
+  // 1. Alertas & Riesgos de Precios
+  umbralSubidaModeradaPct: number; // Por defecto: 8 (%)
+  umbralSubidaCriticaPct: number; // Por defecto: 15 (%)
+  notificarConcentracionProveedor: boolean; // Por defecto: true
+  umbralConcentracionProveedorPct: number; // Por defecto: 30 (%)
+  notificarFacturasVencidas: boolean; // Por defecto: true
+  diasAnticipacionVencimiento: number; // Por defecto: 3 (días antes)
+
+  // 2. Facturación Recurrente & Vencimientos
+  limiteDiasFacturasRecurrentes: number; // Por defecto: 30 (días para clasificar compras recurrentes)
+  diasToleranciaPagoVencido: number; // Por defecto: 7 (días margen tras fecha límite)
+  evaluarVencimientosActivo: boolean; // Por defecto: true
+
+  // 3. Proveedores & Dependencia Operativa
+  umbralDependenciaAltaPct: number; // Por defecto: 35 (%)
+  umbralDependenciaMediaPct: number; // Por defecto: 18 (%)
+  minimoFacturasParaConcentracion: number; // Por defecto: 3 (mínimo facturas registradas)
+
+  // 4. Panel de Control & Preferencias UI
+  facturasPorPagina: number; // Por defecto: 10 (10 | 25 | 50 | 100)
+  periodoDashboardPredeterminado: '7d' | '30d' | 'trimestre' | 'ano'; // Por defecto: 'ano'
+  anoFiscalReferencia: number; // Por defecto: 2026
+  topProveedoresRanking: number; // Por defecto: 5
+
+  // 5. Fiscalidad e IVA
+  tipoIvaPredeterminado: string; // Por defecto: '21%'
+  permitirIvaCeroOExento: boolean; // Por defecto: true
+
+  actualizadoEn?: string;
+}
+
+export const DEFAULT_PARAMETROS_SISTEMA: ParametrosSistema = {
+  umbralSubidaModeradaPct: 8,
+  umbralSubidaCriticaPct: 15,
+  notificarConcentracionProveedor: true,
+  umbralConcentracionProveedorPct: 30,
+  notificarFacturasVencidas: true,
+  diasAnticipacionVencimiento: 3,
+
+  limiteDiasFacturasRecurrentes: 30,
+  diasToleranciaPagoVencido: 7,
+  evaluarVencimientosActivo: true,
+
+  umbralDependenciaAltaPct: 35,
+  umbralDependenciaMediaPct: 18,
+  minimoFacturasParaConcentracion: 3,
+
+  facturasPorPagina: 10,
+  periodoDashboardPredeterminado: 'ano',
+  anoFiscalReferencia: 2026,
+  topProveedoresRanking: 5,
+
+  tipoIvaPredeterminado: '21%',
+  permitirIvaCeroOExento: true,
 };

@@ -23,13 +23,17 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Sparkles,
+  Edit3
 } from 'lucide-react';
-import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio } from '../types';
+import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { obtenerParametrosSistema } from '../utils/parametrosSistema';
 import { FacturaDetalleModal } from './FacturaDetalleModal';
 import { EliminarFacturaModal } from './EliminarFacturaModal';
 import { VisorFacturaModal } from './VisorFacturaModal';
 import { CamaraFacturaModal } from './CamaraFacturaModal';
+import { FormularioFacturaModal } from './FormularioFacturaModal';
 
 interface FacturasViewProps {
   facturas: Factura[];
@@ -91,6 +95,24 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   const [facturaParaEliminar, setFacturaParaEliminar] = useState<Factura | null>(null);
   const [isDeletingFactura, setIsDeletingFactura] = useState(false);
 
+  // Formulario Factura Inteligente (Modal)
+  const [isFormularioOpen, setIsFormularioOpen] = useState(false);
+  const [facturaParaFormulario, setFacturaParaFormulario] = useState<Partial<Factura> | null>(null);
+  const [archivoParaFormulario, setArchivoParaFormulario] = useState<{
+    base64Data?: string;
+    fileName?: string;
+    mimeType?: string;
+  } | null>(null);
+
+  const abrirFormularioConFactura = (
+    factura?: Partial<Factura> | null,
+    archivoInfo?: { base64Data?: string; fileName?: string; mimeType?: string } | null
+  ) => {
+    setFacturaParaFormulario(factura || null);
+    setArchivoParaFormulario(archivoInfo || null);
+    setIsFormularioOpen(true);
+  };
+
   // Notification Toast
   const [notificacion, setNotificacion] = useState<string | null>(null);
 
@@ -106,7 +128,27 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
 
   // Pagination State
   const [paginaActual, setPaginaActual] = useState(1);
-  const [elementosPorPagina, setElementosPorPagina] = useState(10);
+  const [elementosPorPagina, setElementosPorPagina] = useState(() => {
+    try {
+      return obtenerParametrosSistema().facturasPorPagina || 10;
+    } catch {
+      return 10;
+    }
+  });
+
+  // Sincronizar paginación con cambios en los parámetros del sistema
+  useEffect(() => {
+    const handleParamsActualizados = (e: any) => {
+      const nuevoLimite = e?.detail?.facturasPorPagina;
+      if (typeof nuevoLimite === 'number' && nuevoLimite > 0) {
+        setElementosPorPagina(nuevoLimite);
+      }
+    };
+    window.addEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    return () => {
+      window.removeEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    };
+  }, []);
 
   // Helper para normalizar cualquier fecha a formato estándar YYYY-MM-DD para comparaciones precisas
   const normalizarFecha = (fechaStr?: string): string => {
@@ -279,6 +321,13 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             }
           }
 
+          const resolvedNegocio: DatosNegocio = {
+            ...DEFAULT_DATOS_NEGOCIO,
+            ...datosNegocio,
+            sector: datosNegocio?.sector || DEFAULT_DATOS_NEGOCIO.sector,
+            contextoOperativo: datosNegocio?.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+          };
+
           // Call backend server API with Gemini
           const response = await fetch('/api/gemini/extract-invoice', {
             method: 'POST',
@@ -287,6 +336,10 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
               fileData: base64Activo,
               mimeType: archivo.tipo,
               fileName: archivo.nombre,
+              nombreNegocio: resolvedNegocio.nombre,
+              datosNegocio: resolvedNegocio,
+              sector: resolvedNegocio.sector,
+              contextoOperativo: resolvedNegocio.contextoOperativo,
               existingSuppliers: proveedores.map((p) => ({
                 id: p.idProveedor,
                 nombre: p.nombreProveedor,
@@ -728,6 +781,15 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
 
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <button
+              id="btn-abrir-formulario-factura-dropzone"
+              onClick={() => abrirFormularioConFactura()}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white text-xs font-bold tracking-wide shadow-lg shadow-rose-950/40 transition-all cursor-pointer flex items-center gap-2"
+              title="Abrir formulario para subir documento, analizar con Gemini y autocompletar la categoría de gasto automáticamente"
+            >
+              <Sparkles className="w-4 h-4 text-amber-200" />
+              <span>NUEVA FACTURA CON FORMULARIO IA</span>
+            </button>
+            <button
               id="btn-seleccionar-archivos"
               onClick={() => fileInputRef.current?.click()}
               className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold tracking-wide transition-all border border-slate-700 cursor-pointer"
@@ -939,7 +1001,30 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                   )}
 
                   {item.datosExtraidos && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {item.datosExtraidos.categoriaGasto && (
+                        <span
+                          className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold"
+                          title={item.datosExtraidos.categoriaGastoJustificacion || 'Categoría asignada con IA'}
+                        >
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          <span>{item.datosExtraidos.categoriaGasto}</span>
+                        </span>
+                      )}
+                      <button
+                        onClick={() =>
+                          abrirFormularioConFactura(item.datosExtraidos!, {
+                            base64Data: item.base64Data,
+                            fileName: item.nombre,
+                            mimeType: item.tipo,
+                          })
+                        }
+                        className="px-2 py-0.5 rounded bg-gradient-to-r from-rose-600/20 to-amber-600/20 hover:from-rose-600/40 hover:to-amber-600/40 text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                        title="Revisar o editar datos y categoría autocompletada en el formulario"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        <span className="hidden md:inline">Formulario</span>
+                      </button>
                       <button
                         onClick={() => setFacturaParaVisor(item.datosExtraidos!)}
                         className="p-1 rounded text-sky-400 hover:text-sky-200 hover:bg-sky-500/10 transition-colors"
@@ -1294,11 +1379,15 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             className="bg-[#0a0f18] border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
           >
             <option value="TODAS">Todas las categorías</option>
+            <option value="Insumos">Insumos</option>
+            <option value="Logística">Logística</option>
+            <option value="Servicios">Servicios</option>
             <option value="Materias Primas">Materias Primas</option>
             <option value="Envases y Embalajes">Envases y Embalajes</option>
             <option value="Suministros y Energía">Suministros y Energía</option>
             <option value="Logística y Transporte">Logística y Transporte</option>
             <option value="Mantenimiento y Maquinaria">Mantenimiento y Maquinaria</option>
+            <option value="Servicios y Gestión">Servicios y Gestión</option>
           </select>
 
           {/* Status Select */}
@@ -1476,6 +1565,16 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            abrirFormularioConFactura(fac);
+                          }}
+                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/20 transition-colors cursor-pointer"
+                          title="Editar factura y categoría de gasto en el formulario"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setFacturaSeleccionada(fac);
                           }}
                           className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer"
@@ -1633,6 +1732,10 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
           setFacturaSeleccionada(null);
           setFacturaParaVisor(fac);
         }}
+        onEditarEnFormulario={(fac) => {
+          setFacturaSeleccionada(null);
+          abrirFormularioConFactura(fac);
+        }}
         onUploadToDrive={onUploadToDrive}
       />
 
@@ -1653,6 +1756,27 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
         onCapturaCompletada={handleCapturaCamara}
+      />
+
+      {/* Intelligent Invoice Form Modal with Gemini AI categorization */}
+      <FormularioFacturaModal
+        isOpen={isFormularioOpen}
+        onClose={() => {
+          setIsFormularioOpen(false);
+          setFacturaParaFormulario(null);
+          setArchivoParaFormulario(null);
+        }}
+        facturaInicial={facturaParaFormulario}
+        archivoInicial={archivoParaFormulario}
+        proveedoresExistentes={proveedores}
+        datosNegocio={datosNegocio}
+        onSaveFactura={async (facturaGuardar, archivoInfo) => {
+          const res = await onSaveFactura(facturaGuardar, archivoInfo);
+          showNotification(
+            `Factura ${facturaGuardar.idFactura} guardada con categoría "${facturaGuardar.categoriaGasto}".`
+          );
+          return res;
+        }}
       />
 
       {/* Coordinated Deletion Confirmation Modal */}

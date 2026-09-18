@@ -77,6 +77,17 @@ export const INITIAL_PROVEEDORES: Proveedor[] = [
     tiempoMedioEntrega: '24h',
     cif: 'B-50123984',
     contacto: 'operaciones@frioexpress.es'
+  },
+  {
+    idProveedor: 'PROV-008',
+    nombreProveedor: 'Molinos & Harinas del Ebro S.A.',
+    productosSuministrados: 'Harina de fuerza 25 kg, Harina repostería W200, Salvado de trigo',
+    importeMensual: 1420.00,
+    frecuencia: 'Mensual',
+    riesgoDependencia: 'Bajo',
+    tiempoMedioEntrega: '48h',
+    cif: 'A-50982314',
+    contacto: 'pedidos@molinosebro.es'
   }
 ];
 
@@ -203,6 +214,28 @@ export const INITIAL_FACTURAS: Factura[] = [
     sincronizadoSheets: true
   },
   {
+    idFactura: 'FAC-2026-028',
+    fechaEmision: '2026-03-05',
+    idProveedor: 'PROV-008',
+    nombreProveedor: 'Molinos & Harinas del Ebro S.A.',
+    concepto: 'Remesa de prueba harinas panificables y repostería',
+    importe: 982.00,
+    fechaVencimiento: '2026-04-05',
+    estado: 'Pagada',
+    fechaPago: '2026-03-28',
+    baseImponible: 982.00,
+    tiposIVA: '4%',
+    cuotaIVA: 39.28,
+    total: 1021.28,
+    categoriaGasto: 'Materias Primas',
+    lineas: [
+      { nombreProducto: 'Harina de fuerza 25 kg', cantidad: 35, unidad: 'sacos', precioUnitario: 18.80, subtotal: 658.00 },
+      { nombreProducto: 'Harina repostería W200', cantidad: 20, unidad: 'sacos', precioUnitario: 16.20, subtotal: 324.00 }
+    ],
+    archivoNombre: 'FAC-2026-028_MolinosEbro_Mar.pdf',
+    sincronizadoSheets: true
+  },
+  {
     idFactura: 'FAC-2026-031',
     fechaEmision: '2026-03-10',
     idProveedor: 'PROV-003',
@@ -270,6 +303,28 @@ export const INITIAL_FACTURAS: Factura[] = [
     sincronizadoSheets: true
   },
   {
+    idFactura: 'FAC-2026-058',
+    fechaEmision: '2026-05-18',
+    idProveedor: 'PROV-008',
+    nombreProveedor: 'Molinos & Harinas del Ebro S.A.',
+    concepto: 'Suministro harinas de fuerza y repostería campaña primavera',
+    importe: 1112.00,
+    fechaVencimiento: '2026-06-18',
+    estado: 'Pagada',
+    fechaPago: '2026-06-12',
+    baseImponible: 1112.00,
+    tiposIVA: '4%',
+    cuotaIVA: 44.48,
+    total: 1156.48,
+    categoriaGasto: 'Materias Primas',
+    lineas: [
+      { nombreProducto: 'Harina de fuerza 25 kg', cantidad: 40, unidad: 'sacos', precioUnitario: 19.40, subtotal: 776.00 },
+      { nombreProducto: 'Harina repostería W200', cantidad: 20, unidad: 'sacos', precioUnitario: 16.80, subtotal: 336.00 }
+    ],
+    archivoNombre: 'FAC-2026-058_MolinosEbro_May.pdf',
+    sincronizadoSheets: true
+  },
+  {
     idFactura: 'FAC-2026-064',
     fechaEmision: '2026-06-02',
     idProveedor: 'PROV-007',
@@ -333,6 +388,28 @@ export const INITIAL_FACTURAS: Factura[] = [
       { nombreProducto: 'Harina repostería W200', cantidad: 20, unidad: 'sacos', precioUnitario: 17.75, subtotal: 355.00 }
     ],
     archivoNombre: 'FAC-2026-081_HarinasAgosto.pdf',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-085',
+    fechaEmision: '2026-08-18',
+    idProveedor: 'PROV-008',
+    nombreProveedor: 'Molinos & Harinas del Ebro S.A.',
+    concepto: 'Suministro harinas para fin de temporada estival',
+    importe: 1334.50,
+    fechaVencimiento: '2026-09-18',
+    estado: 'Pendiente',
+    fechaPago: 'Pendiente de confirmar',
+    baseImponible: 1334.50,
+    tiposIVA: '4%',
+    cuotaIVA: 53.38,
+    total: 1387.88,
+    categoriaGasto: 'Materias Primas',
+    lineas: [
+      { nombreProducto: 'Harina de fuerza 25 kg', cantidad: 45, unidad: 'sacos', precioUnitario: 20.10, subtotal: 904.50 },
+      { nombreProducto: 'Harina repostería W200', cantidad: 25, unidad: 'sacos', precioUnitario: 17.20, subtotal: 430.00 }
+    ],
+    archivoNombre: 'FAC-2026-085_MolinosEbro_Ago.pdf',
     sincronizadoSheets: true
   },
   {

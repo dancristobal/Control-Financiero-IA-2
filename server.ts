@@ -78,11 +78,15 @@ function generateGroundedExecutiveAnalysis(
   proveedores: any[] = [],
   alertas: any[] = [],
   resumenIVA: any = {},
-  nombreNegocio: string = 'La Empresa'
+  datosNegocioInput: any = 'La Empresa'
 ) {
   const safeFacturas = Array.isArray(facturas) ? facturas : [];
   const safeProveedores = Array.isArray(proveedores) ? proveedores : [];
   const safeAlertas = Array.isArray(alertas) ? alertas : [];
+
+  const nombreNegocio = (typeof datosNegocioInput === 'string' ? datosNegocioInput : datosNegocioInput?.nombre) || 'La Empresa';
+  const sector = (typeof datosNegocioInput === 'object' && datosNegocioInput?.sector) ? datosNegocioInput.sector : 'Comercio y Servicios';
+  const contextoOperativo = (typeof datosNegocioInput === 'object' && datosNegocioInput?.contextoOperativo) ? datosNegocioInput.contextoOperativo : 'Operativa comercial estándar';
 
   const totalGasto = safeFacturas.reduce((acc, f) => acc + (Number(f.total) || 0), 0);
   const totalBase = safeFacturas.reduce((acc, f) => acc + (Number(f.baseImponible) || 0), 0);
@@ -129,10 +133,10 @@ function generateGroundedExecutiveAnalysis(
   const topCat = sortedCategories[0] || { nombre: 'Gastos Generales', total: totalGasto, porcentaje: 100 };
   const topProv = sortedSuppliers[0] || { nombre: 'Proveedor Principal', total: totalGasto, porcentaje: 100, count: 1 };
 
-  // Generate grounded summary
+  // Generate grounded summary contextualized to the specific business and sector
   const estadoGeneral = facturasCount > 0
-    ? `${nombreNegocio} registra un volumen acumulado de ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € distribuidos en ${facturasCount} facturas. La partida con mayor concentración es "${topCat.nombre}" (${topCat.porcentaje.toFixed(1)}% del gasto total). La relación de compras muestra a ${topProv.nombre} como principal receptor del presupuesto operativo.`
-    : `${nombreNegocio} no dispone de facturas suficientes registradas para emitir un balance consolidado. Se recomienda registrar facturas de proveedores para activar el análisis continuo.`;
+    ? `${nombreNegocio} (Sector: ${sector}) registra un volumen acumulado de ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € distribuidos en ${facturasCount} facturas. La partida con mayor concentración presupuestaria es "${topCat.nombre}" (${topCat.porcentaje.toFixed(1)}% del gasto total). La relación de compras muestra a ${topProv.nombre} como principal suministrador del negocio, alineado con su operativa de ${contextoOperativo.slice(0, 120)}...`
+    : `${nombreNegocio} (${sector}) no dispone de facturas suficientes registradas para emitir un balance consolidado. Se recomienda registrar facturas de proveedores para activar el análisis continuo.`;
 
   // Principales gastos
   const principalesGastos = sortedCategories.length > 0
@@ -147,12 +151,12 @@ function generateGroundedExecutiveAnalysis(
       cambiosImportantes.push(`${a.proveedor || a.titulo}: ${a.descripcion}`);
     });
   } else if (sortedSuppliers.length > 0) {
-    cambiosImportantes.push(`Concentración del gasto en ${topProv.nombre} alcanzando el ${topProv.porcentaje.toFixed(1)}% del presupuesto.`);
+    cambiosImportantes.push(`Concentración del gasto en ${topProv.nombre} alcanzando el ${topProv.porcentaje.toFixed(1)}% del presupuesto en ${sector}.`);
     if (sortedSuppliers.length > 1) {
       cambiosImportantes.push(`Segundo proveedor en volumen: ${sortedSuppliers[1].nombre} con ${sortedSuppliers[1].total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
     }
   } else {
-    cambiosImportantes.push('Evolución de costes estable según las facturas computadas.');
+    cambiosImportantes.push(`Evolución de costes estable según las facturas computadas para ${nombreNegocio}.`);
   }
 
   // Alertas
@@ -161,7 +165,7 @@ function generateGroundedExecutiveAnalysis(
     alertasGeneradas.push(`${facturasVencidas.length} factura(s) vencida(s) pendiente(s) de regularizar por un total de ${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
   }
   if (topProv.porcentaje > 35 && sortedSuppliers.length > 1) {
-    alertasGeneradas.push(`Dependencia operativa elevada en ${topProv.nombre} (${topProv.porcentaje.toFixed(1)}% de las compras).`);
+    alertasGeneradas.push(`Dependencia operativa elevada en ${topProv.nombre} (${topProv.porcentaje.toFixed(1)}% de las compras en ${sector}).`);
   }
   if (facturasPendientes.length > 0) {
     alertasGeneradas.push(`${facturasPendientes.length} factura(s) pendiente(s) de pago con vencimiento programado (${totalPendiente.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`);
@@ -170,15 +174,15 @@ function generateGroundedExecutiveAnalysis(
     alertasGeneradas.push('No se detectan incidencias críticas ni vencimientos superados en la cartera actual.');
   }
 
-  // Oportunidades de ahorro
+  // Oportunidades de ahorro adaptadas al negocio
   const oportunidadesAhorro: string[] = [];
   if (sortedSuppliers.length > 0) {
-    oportunidadesAhorro.push(`Negociar acuerdo de rappel o descuento por volumen con ${topProv.nombre} sobre el volumen de ${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.`);
+    oportunidadesAhorro.push(`Negociar acuerdo de rappel o descuento por volumen con ${topProv.nombre} sobre el volumen acumulado de ${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € para mitigar el coste de aprovisionamiento en ${sector}.`);
   }
   if (sortedCategories.length > 1) {
-    oportunidadesAhorro.push(`Revisar y contrastar tarifas en la categoría de "${sortedCategories[0].nombre}" para diversificar compras.`);
+    oportunidadesAhorro.push(`Revisar y contrastar tarifas en la partida clave de "${sortedCategories[0].nombre}" para diversificar proveedores en la operativa de ${nombreNegocio}.`);
   }
-  oportunidadesAhorro.push('Agrupar pagos y aprovisionamientos quincenales para optimizar costes de portes y gestión administrativa.');
+  oportunidadesAhorro.push(`Agrupar pedidos y aprovisionamientos quincenales para optimizar costes de portes y gestión administrativa adaptada al modelo operativo.`);
 
   // 3 Acciones recomendadas
   const tresAcciones = [
@@ -186,7 +190,7 @@ function generateGroundedExecutiveAnalysis(
       accion: facturasVencidas.length > 0
         ? `Regularizar las ${facturasVencidas.length} facturas vencidas (${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €)`
         : `Revisar el calendario de vencimiento de las ${facturasPendientes.length} facturas pendientes`,
-      motivo: 'Evitar posibles recargos comerciales e interrupciones en la cadena de aprovisionamiento.',
+      motivo: `Asegurar el flujo continuo de suministros y evitar penalizaciones comerciales en ${nombreNegocio} (${sector}).`,
       datos: facturasVencidas.length > 0
         ? `Facturas: ${facturasVencidas.map((f) => f.idFactura).slice(0, 3).join(', ')}`
         : `Importe pendiente: ${totalPendiente.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
@@ -194,13 +198,13 @@ function generateGroundedExecutiveAnalysis(
     },
     {
       accion: `Negociar condiciones marco con ${topProv.nombre}`,
-      motivo: `Concentra el ${topProv.porcentaje.toFixed(1)}% del presupuesto total (${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`,
+      motivo: `Concentra el ${topProv.porcentaje.toFixed(1)}% del presupuesto total (${topProv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €) en partidas estratégicas de ${nombreNegocio}.`,
       datos: `${topProv.count} facturas emitidas por este proveedor`,
       impacto: 'Alto',
     },
     {
       accion: `Auditar costes unitarios en la categoría "${topCat.nombre}"`,
-      motivo: 'Controlar el margen operativo frente a posibles subidas de precios en el mercado.',
+      motivo: `Controlar el margen operativo frente a oscilaciones de precios del mercado en el sector ${sector}.`,
       datos: `Partida que representa ${topCat.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
       impacto: 'Medio',
     },
@@ -208,8 +212,8 @@ function generateGroundedExecutiveAnalysis(
 
   // Prioridad semana
   const prioridadSemana = facturasVencidas.length > 0
-    ? `Regularizar con urgencia las ${facturasVencidas.length} factura(s) con vencimiento superado (${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €).`
-    : `Revisar condiciones comerciales y precios con el proveedor principal (${topProv.nombre}).`;
+    ? `Regularizar con urgencia las ${facturasVencidas.length} factura(s) con vencimiento superado (${totalVencido.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €) para evitar retrasos en el aprovisionamiento de ${nombreNegocio}.`
+    : `Revisar condiciones comerciales y precios con el proveedor principal (${topProv.nombre}) en ${sector}.`;
 
   return {
     id: `ANALISIS-${Date.now()}`,
@@ -227,14 +231,18 @@ function generateGroundedExecutiveAnalysis(
 // Endpoint: Extraer datos de factura con Gemini
 app.post('/api/gemini/extract-invoice', async (req, res) => {
   try {
-    const { fileData, mimeType, fileName, existingSuppliers, nombreNegocio } = req.body;
+    const { fileData, mimeType, fileName, existingSuppliers, nombreNegocio, datosNegocio, sector, contextoOperativo } = req.body;
 
     if (!fileData) {
       return res.status(400).json({ error: 'No se ha proporcionado el archivo de factura.' });
     }
 
     const ai = getGeminiClient();
-    const empresa = nombreNegocio || 'la empresa receptora';
+    const empresa = nombreNegocio || datosNegocio?.nombre || 'la empresa receptora';
+    const sectorNegocio = sector || datosNegocio?.sector || 'Comercio y Hostelería';
+    const contextoNegocio = contextoOperativo || datosNegocio?.contextoOperativo || 'Actividad comercial regular con compras a proveedores';
+    const nifNegocio = datosNegocio?.nif || '';
+    const direccionNegocio = datosNegocio?.direccion || '';
 
     // Si no hay clave de API configurada, advertir con claridad en lugar de falsear datos
     if (!ai) {
@@ -245,17 +253,29 @@ app.post('/api/gemini/extract-invoice', async (req, res) => {
       });
     }
 
-    // Prompt estricto para extracción fiel mediante Gemini
-    const systemPrompt = `Eres un auditor contable y analista financiero especializado en empresas y comercios para "${empresa}".
-Tu misión es extraer con precisión matemática y fidelidad absoluta todos los datos de la factura adjunta.
+    // Prompt estricto para extracción fiel mediante Gemini incluyendo obligatoriamente el contexto del negocio
+    const systemPrompt = `Eres un auditor contable y analista financiero especializado en empresas del sector "${sectorNegocio}" para "${empresa}" (NIF: ${nifNegocio || 'No especificado'}, Dirección: ${direccionNegocio || 'No especificada'}).
+Contexto operativo y modelo del negocio cliente: "${contextoNegocio}".
+
+Tu misión es extraer con precisión matemática y fidelidad absoluta todos los datos de la factura adjunta emitida por un proveedor a favor de "${empresa}".
 
 REGLAS OBLIGATORIAS:
-1. No inventar datos. Si un campo no existe en el documento, escribe exactamente: "Pendiente de confirmar".
-2. Mantener exactamente el nombre del producto o servicio si aparece en las líneas.
-3. Extraer los importes numéricos en euros sin símbolos de moneda.
-4. Tipo de IVA: Extraer el porcentaje exacto (ej: '21%', '10%', '4%', o '10% y 21%').
-5. Categoría de gasto debe ser una de: "Materias Primas", "Envases y Embalajes", "Suministros y Energía", "Logística y Transporte", "Mantenimiento y Maquinaria", "Servicios y Gestión".
-6. Si conoces la lista de proveedores registrados: ${JSON.stringify(existingSuppliers || [])}, intenta vincular el idProveedor si coincide el nombre del proveedor. Si es nuevo, asígnale un ID coherente.`;
+1. El receptor o cliente de la factura es "${empresa}" (NIF: ${nifNegocio}). El emisor o vendedor es el proveedor. NO confundir el proveedor con el cliente receptor.
+2. PROPUESTA AUTOMÁTICA DE CATEGORÍA DE GASTO ("categoriaGasto"):
+Debes analizar minuciosamente el NOMBRE DEL PROVEEDOR (emisor) y la DESCRIPCIÓN/DETALLE DE LOS PRODUCTOS O SERVICIOS facturados para proponer automáticamente la categoría de gasto más exacta.
+Categorías de referencia:
+- "Insumos" (o "Materias Primas"): Cuando el proveedor suministre materias primas, ingredientes alimentarios, consumibles operativos de producción o insumos directos (ej. harinas, lácteos, grasas, levaduras, frutas, productos alimenticios, insumos de elaboración).
+- "Logística": Cuando el proveedor o la descripción correspondan a portes, transportes, fletes, distribución, envíos, paquetería, mensajería o servicios de reparto (ej. agencias de transporte, couriers, portes de mercancías).
+- "Servicios": Cuando el proveedor facture servicios profesionales, asesoría fiscal/laboral/contable, licencias de software, hosting, consultoría, limpieza, seguros, seguridad o gestión externa.
+- "Envases y Embalajes": Cajas de cartón, bobinas kraft, bandejas, bolsas, botellas, etiquetas y materiales de empaquetado.
+- "Suministros y Energía": Electricidad, gas, agua, telecomunicaciones o combustibles.
+- "Mantenimiento y Maquinaria": Reparación de equipos, hornos, piezas de recambio, revisiones técnicas preventivas o correctivas.
+En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el proveedor y la descripción del producto justifican la categoría elegida (ej: "Propuesto como 'Logística' porque el proveedor Transportes Norte factura servicio de porte urgente").
+3. No inventar datos. Si un campo no existe en el documento, escribe exactamente: "Pendiente de confirmar".
+4. Mantener exactamente el nombre del producto o servicio si aparece en las líneas.
+5. Extraer los importes numéricos en euros sin símbolos de moneda.
+6. Tipo de IVA: Extraer el porcentaje exacto (ej: '21%', '10%', '4%', o '10% y 21%').
+7. Si conoces la lista de proveedores registrados: ${JSON.stringify(existingSuppliers || [])}, intenta vincular el idProveedor si coincide el nombre del proveedor. Si es nuevo, asígnale un ID coherente.`;
 
     const cleanBase64 = fileData.includes('base64,') ? fileData.split('base64,')[1] : fileData;
     const documentPart = {
@@ -266,7 +286,7 @@ REGLAS OBLIGATORIAS:
     };
 
     const textPart = {
-      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema.`,
+      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema, proponiendo automáticamente la categoría de gasto adecuada en base al proveedor y los productos.`,
     };
 
     let parsedJson: any = null;
@@ -286,7 +306,14 @@ REGLAS OBLIGATORIAS:
         tiposIVA: { type: Type.STRING, description: 'Porcentaje o tipos de IVA aplicados, ej: "21%", "10%", "4%"' },
         cuotaIVA: { type: Type.NUMBER, description: 'Importe de cuota de IVA en euros' },
         total: { type: Type.NUMBER, description: 'Importe total factura con impuestos' },
-        categoriaGasto: { type: Type.STRING, description: 'Categoría de gasto' },
+        categoriaGasto: {
+          type: Type.STRING,
+          description: 'Categoría de gasto propuesta automáticamente según el nombre del proveedor y la descripción de los productos (ej. "Insumos", "Logística", "Servicios", "Materias Primas", "Envases y Embalajes", "Suministros y Energía", "Mantenimiento y Maquinaria")'
+        },
+        categoriaGastoJustificacion: {
+          type: Type.STRING,
+          description: 'Breve explicación de cómo el nombre del proveedor y la descripción del producto determinan la categoría propuesta'
+        },
         lineas: {
           type: Type.ARRAY,
           items: {
@@ -317,7 +344,7 @@ REGLAS OBLIGATORIAS:
     try {
       try {
         const response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.8-flash',
           contents: { parts: [documentPart, textPart] },
           config: {
             systemInstruction: systemPrompt,
@@ -371,6 +398,34 @@ REGLAS OBLIGATORIAS:
     if (!parsedJson.estado) parsedJson.estado = 'Pendiente';
     if (!parsedJson.fechaPago) parsedJson.fechaPago = 'Pendiente de confirmar';
 
+    // Asegurar y enriquecer la propuesta automática de categoría de gasto
+    parsedJson.categoriaGastoSugerida = true;
+    if (!parsedJson.categoriaGasto || parsedJson.categoriaGasto === 'Pendiente de confirmar') {
+      const textoCompleto = `${parsedJson.nombreProveedor || ''} ${parsedJson.concepto || ''} ${(parsedJson.lineas || []).map((l: any) => l.nombreProducto || '').join(' ')}`.toLowerCase();
+      if (/transporte|logistica|logística|envio|envío|flete|porte|mensajer|paqueter|seur|dhl|mrw|gls|ups|nacex|fedex|reparto|distribuc/.test(textoCompleto)) {
+        parsedJson.categoriaGasto = 'Logística';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Logística' por servicios de transporte o envíos de "${parsedJson.nombreProveedor}".`;
+      } else if (/asesor|gestor|abogad|legal|software|licencia|hosting|cloud|consultor|seguro|limpieza|seguridad|auditor|honorario|banco|comision|cuota/.test(textoCompleto)) {
+        parsedJson.categoriaGasto = 'Servicios';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Servicios' por gestión profesional o servicios de "${parsedJson.nombreProveedor}".`;
+      } else if (/caja|carton|cartón|embalaj|envase|bolsa|film|bobina|kraft|etiqueta|empaque|plastico|plástico/.test(textoCompleto)) {
+        parsedJson.categoriaGasto = 'Envases y Embalajes';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Envases y Embalajes' por materiales de empaque de "${parsedJson.nombreProveedor}".`;
+      } else if (/electric|luz|gas|agua|energia|energía|iberdrola|endesa|naturgy|telefon|internet|fibra/.test(textoCompleto)) {
+        parsedJson.categoriaGasto = 'Suministros y Energía';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Suministros y Energía' para consumos de suministros.`;
+      } else if (/mantenimiento|reparac|maquinaria|horno|motor|recambio|repuesto|tecnico|técnico|averia|avería/.test(textoCompleto)) {
+        parsedJson.categoriaGasto = 'Mantenimiento y Maquinaria';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Mantenimiento y Maquinaria' por soporte técnico de equipos.`;
+      } else {
+        parsedJson.categoriaGasto = 'Insumos';
+        parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente como 'Insumos' para producción según el proveedor "${parsedJson.nombreProveedor}".`;
+      }
+    } else if (!parsedJson.categoriaGastoJustificacion) {
+      const primerProd = parsedJson.lineas?.[0]?.nombreProducto || parsedJson.concepto || 'productos';
+      parsedJson.categoriaGastoJustificacion = `Propuesto automáticamente por Gemini en base al proveedor "${parsedJson.nombreProveedor}" y los artículos adquiridos (${primerProd}).`;
+    }
+
     return res.json({ factura: parsedJson, simulated: false });
   } catch (error: any) {
     console.error('Error general al procesar factura con Gemini:', error);
@@ -385,33 +440,58 @@ REGLAS OBLIGATORIAS:
 // Endpoint: Análisis Ejecutivo con Gemini
 app.post('/api/gemini/analisis-ejecutivo', async (req, res) => {
   try {
-    const { facturas, proveedores, alertas, resumenIVA, nombreNegocio, datosNegocio } = req.body;
-    const empresa = nombreNegocio || datosNegocio?.nombre || 'La Empresa';
+    const { facturas, proveedores, alertas, resumenIVA, nombreNegocio, datosNegocio, sector, contextoOperativo } = req.body;
+    const businessName = nombreNegocio || datosNegocio?.nombre || 'La Empresa';
+    const businessSector = sector || datosNegocio?.sector || 'Hostelería, Obrador y Confitería Artesanal';
+    const businessContext = contextoOperativo || datosNegocio?.contextoOperativo || 'Obrador artesanal con despacho directo y distribución B2B. Aprovisionamiento clave de harinas especiales, grasas lácteas, azúcares, cajas kraft y consumo intensivo de energía en hornos.';
+    const businessNif = datosNegocio?.nif || '';
+    const businessAddress = datosNegocio?.direccion || '';
+
+    const businessInfo = {
+      nombre: businessName,
+      sector: businessSector,
+      contextoOperativo: businessContext,
+      nif: businessNif,
+      direccion: businessAddress,
+    };
     const ai = getGeminiClient();
 
     if (!ai) {
-      // Fallback con datos calculados matemáticamente de las facturas reales
+      // Fallback con datos calculados matemáticamente de las facturas reales contextualizados al negocio
       const fallbackAnalisis = generateGroundedExecutiveAnalysis(
         facturas,
         proveedores,
         alertas,
         resumenIVA,
-        empresa
+        businessInfo
       );
       return res.json({ analisis: fallbackAnalisis, simulated: true });
     }
 
-    const systemPrompt = `Eres el Director Financiero (CFO) consultor de "${empresa}".
-Debes realizar un análisis ejecutivo exhaustivo con los datos financieros reales proporcionados.
-No te limites a resumir cifras numéricas. Encuentra tendencias, anomalías, aumentos, riesgos, concentración de gasto y oportunidades reales de revisión basadas exclusivamente en las facturas y proveedores recibidos.
-No inventes productos ni empresas que no aparezcan en los datos.
-Genera el resultado en formato JSON estricto.`;
+    const systemPrompt = `Eres el Director Financiero (CFO) y auditor contable estratégico exclusivo de "${businessName}".
 
-    const promptText = `Analiza los siguientes datos registrados de "${empresa}":
-FACTURAS (${facturas?.length || 0}): ${JSON.stringify(facturas?.slice(0, 35) || [])}
-PROVEEDORES (${proveedores?.length || 0}): ${JSON.stringify(proveedores || [])}
-ALERTAS: ${JSON.stringify(alertas || [])}
-RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
+INFORMACIÓN OBLIGATORIA DEL NEGOCIO AUDITADO:
+- Nombre / Razón Social: "${businessName}" (NIF: ${businessNif || 'No especificado'}, Sede: ${businessAddress || 'No especificada'})
+- Sector de Actividad: "${businessSector}"
+- Contexto Operativo y Modelo de Negocio: "${businessContext}"
+
+INSTRUCCIONES OBLIGATORIAS DE AUDITORÍA Y PERSONALIZACIÓN:
+1. OBLIGATORIO: Todas las conclusiones, diagnósticos de concentración de costes, alertas críticas, oportunidades de ahorro y las 3 acciones prioritarias DEBEN estar completamente personalizadas para "${businessName}", considerando obligatoriamente su sector ("${businessSector}") y su modelo operativo real ("${businessContext}").
+2. Contextualiza las partidas contables en función de este sector concreto (por ejemplo, si es obrador/pastelería, los costes de harinas, mantecas, hornos y packaging; si es tecnología, hosting y licencias; etc.).
+3. Detecta anomalías en precios, proveedores dominantes y riesgos de margen basándote ÚNICAMENTE en las facturas y proveedores reales recibidos. NO inventes proveedores ni datos ficticios.
+4. Genera el resultado en formato JSON estricto respetando el esquema.`;
+
+    const promptText = `Por favor elabora el informe de auditoría ejecutiva y análisis financiero de costes para:
+
+DATOS DEL NEGOCIO:
+- Empresa: ${businessName}
+- Sector: ${businessSector}
+- Contexto Operativo: ${businessContext}
+
+FACTURAS REGISTRADAS (${facturas?.length || 0}): ${JSON.stringify(facturas?.slice(0, 35) || [])}
+PROVEEDORES REGISTRADOS (${proveedores?.length || 0}): ${JSON.stringify(proveedores || [])}
+ALERTAS REGISTRADAS: ${JSON.stringify(alertas || [])}
+RESUMEN FISCAL / IVA: ${JSON.stringify(resumenIVA || {})}`;
 
     let parsed: any = null;
     try {
@@ -530,7 +610,7 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
         proveedores,
         alertas,
         resumenIVA,
-        empresa
+        businessInfo
       );
     }
 
@@ -540,7 +620,7 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
         proveedores,
         alertas,
         resumenIVA,
-        empresa
+        businessInfo
       );
     }
 
@@ -557,8 +637,11 @@ RESUMEN IVA: ${JSON.stringify(resumenIVA || {})}`;
 // Endpoint: Pregunta a tus facturas (Chat con Gemini)
 app.post('/api/gemini/chat', async (req, res) => {
   try {
-    const { mensaje, historial, facturas, proveedores, alertas, resumenIVA, nombreNegocio } = req.body;
-    const empresa = nombreNegocio || 'tu empresa';
+    const { mensaje, historial, facturas, proveedores, alertas, resumenIVA, nombreNegocio, datosNegocio, sector, contextoOperativo } = req.body;
+    const businessName = nombreNegocio || datosNegocio?.nombre || 'tu empresa';
+    const businessSector = sector || datosNegocio?.sector || 'Comercio y Hostelería';
+    const businessContext = contextoOperativo || datosNegocio?.contextoOperativo || 'Actividad comercial regular con compras periódicas a proveedores';
+    const businessNif = datosNegocio?.nif || '';
     const ai = getGeminiClient();
 
     const generateLocalChatAnswer = () => {
@@ -598,26 +681,26 @@ app.post('/api/gemini/chat', async (req, res) => {
           return `${idx + 1}. **${cat}**: ${tot.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € (${pct}% del total)`;
         }).join('\n');
 
-        return `Según los datos registrados de **${empresa}**, el gasto total acumulado asciende a **${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €**.\n\n` +
+        return `Según los datos registrados de **${businessName}** (${businessSector}), el gasto total acumulado asciende a **${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €**.\n\n` +
           `Tus principales partidas de gasto son:\n${breakdown || 'Sin partidas computadas aún.'}`;
       } else if (msgLower.includes('proveedor más importante') || msgLower.includes('principal proveedor') || (msgLower.includes('proveedor') && msgLower.includes('importante'))) {
         const pctProv = totalGasto > 0 && topProv.total ? ((topProv.total / totalGasto) * 100).toFixed(1) : '0';
-        return `Tu proveedor de mayor volumen registrado para **${empresa}** es **${topProv.nombre || topProv.nombreProveedor}**, con un total acumulado de **${(topProv.total || topProv.importeMensual || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (aproximadamente un ${pctProv}% del gasto total).`;
+        return `Tu proveedor de mayor volumen registrado para **${businessName}** (${businessSector}) es **${topProv.nombre || topProv.nombreProveedor}**, con un total acumulado de **${(topProv.total || topProv.importeMensual || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (aproximadamente un ${pctProv}% del gasto total).`;
       } else if (msgLower.includes('aumentado precios') || msgLower.includes('encarecido') || msgLower.includes('subid') || msgLower.includes('precio')) {
         const subidasAlertas = safeAlertas.filter((a: any) => a.tipo === 'SUBIDA DE PRECIO' || a.tipo === 'ANOMALIA');
         if (subidasAlertas.length > 0) {
           const lista = subidasAlertas.map((a: any) => `• **${a.proveedor || a.titulo}**: ${a.descripcion}`).join('\n');
-          return `Se han detectado variaciones notables en las siguientes referencias de **${empresa}**:\n\n${lista}`;
+          return `Se han detectado variaciones notables en las siguientes compras de **${businessName}**:\n\n${lista}`;
         }
-        return `En base a las facturas computadas de **${empresa}**, no se han registrado incrementos anómalos o subidas críticas de precios en las alertas activas.`;
+        return `En base a las facturas computadas de **${businessName}**, no se han registrado incrementos anómalos o subidas críticas de precios en las alertas activas.`;
       } else if (msgLower.includes('revisar esta semana') || msgLower.includes('prioridad') || msgLower.includes('semana')) {
         if (facturasVencidas.length > 0) {
           const sumVencida = facturasVencidas.reduce((s: number, f: any) => s + (Number(f.total) || 0), 0);
-          return `**Prioridad de la semana para ${empresa}:**\n\nRegularizar las **${facturasVencidas.length} facturas vencidas** que suman un total de **${sumVencida.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (${facturasVencidas.map((f: any) => f.idFactura).slice(0, 3).join(', ')}) para asegurar el flujo con proveedores.`;
+          return `**Prioridad de la semana para ${businessName} (${businessSector}):**\n\nRegularizar las **${facturasVencidas.length} facturas vencidas** que suman un total de **${sumVencida.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €** (${facturasVencidas.map((f: any) => f.idFactura).slice(0, 3).join(', ')}) para asegurar el flujo de aprovisionamiento.`;
         }
-        return `**Prioridad de la semana para ${empresa}:**\n\nRevisar las condiciones de compra y tarifas de la categoría principal (**${topCat[0]}**), que representa el mayor volumen de gasto registrado.`;
+        return `**Prioridad de la semana para ${businessName} (${businessSector}):**\n\nRevisar las condiciones de compra y tarifas de la categoría principal (**${topCat[0]}**), que representa el mayor volumen de gasto registrado.`;
       } else {
-        return `Analizando las **${safeFacturas.length} facturas** y **${safeProveedores.length} proveedores** de **${empresa}**:\n\n` +
+        return `Analizando las **${safeFacturas.length} facturas** y **${safeProveedores.length} proveedores** de **${businessName}** (${businessSector}):\n\n` +
           `• **Gasto total acumulado:** ${totalGasto.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €.\n` +
           `• **Facturas pendientes/vencidas:** ${facturasPendientes.length + facturasVencidas.length}.\n` +
           `• **Categoría principal:** ${topCat[0]}.\n\n` +
@@ -629,21 +712,31 @@ app.post('/api/gemini/chat', async (req, res) => {
       return res.json({ respuesta: generateLocalChatAnswer(), simulated: true });
     }
 
-    const systemPrompt = `Eres "Finance AI", el asistente financiero inteligente de "${empresa}".
-Responde a las preguntas del usuario utilizando ÚNICAMENTE la información actualmente registrada que te proporcionamos:
-- Facturas registradas (${facturas?.length || 0})
-- Proveedores registrados (${proveedores?.length || 0})
-- Alertas activas (${alertas?.length || 0})
-- Resumen de IVA
+    const systemPrompt = `Eres "Finance AI", el consultor financiero y analista contable exclusivo de "${businessName}".
 
-REGLAS CRÍTICAS:
-1. Responde con lenguaje claro, profesional y estructurado (usando negritas, viñetas y cifras exactas).
-2. Si la información solicitada no existe o no es suficiente en los datos registrados, responde con honestidad: "No puedo determinarlo con los datos disponibles."
-3. No inventes datos, nombres de proveedores, importes ni fechas que no estén en la base de datos.
-4. Recuerda que los cálculos fiscales son un "Resumen orientativo basado en las facturas registradas" y no asesoría fiscal colegiada.`;
+INFORMACIÓN OBLIGATORIA DEL NEGOCIO:
+- Empresa: "${businessName}" (NIF: ${businessNif || 'No especificado'})
+- Sector: "${businessSector}"
+- Contexto Operativo: "${businessContext}"
+
+REGLAS OBLIGATORIAS:
+1. Contextualiza SIEMPRE tus respuestas considerando que el negocio pertenece al sector "${businessSector}" y tiene el modelo operativo: ${businessContext}.
+2. Utiliza ÚNICAMENTE la información financiera y de facturas actualmente registrada que te proporcionamos:
+   - Facturas registradas (${facturas?.length || 0})
+   - Proveedores registrados (${proveedores?.length || 0})
+   - Alertas activas (${alertas?.length || 0})
+   - Resumen de IVA
+3. Responde con lenguaje claro, profesional y estructurado (usando negritas, viñetas y cifras numéricas exactas en euros).
+4. Si la información solicitada no existe o no es suficiente en los datos registrados, responde con honestidad: "No puedo determinarlo con los datos disponibles en tus facturas."
+5. No inventes datos, nombres de proveedores, importes ni fechas que no estén en la base de datos.`;
 
     const contextData = `
-DATOS ACTUALMENTE REGISTRADOS DE ${empresa.toUpperCase()}:
+DATOS DEL NEGOCIO:
+EMPRESA: ${businessName}
+SECTOR: ${businessSector}
+CONTEXTO OPERATIVO: ${businessContext}
+
+REGISTROS DISPONIBLES:
 FACTURAS: ${JSON.stringify(facturas || [])}
 PROVEEDORES: ${JSON.stringify(proveedores || [])}
 ALERTAS: ${JSON.stringify(alertas || [])}

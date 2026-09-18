@@ -32,6 +32,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { generarProveedoresDesdeFacturas, generarAlertasDesdeFacturas } from './utils/sheetDataSync';
+import { obtenerConfiguracionAlertas } from './utils/alertasConfig';
 import { ThemeMode, getInitialTheme, applyTheme } from './utils/theme';
 
 export default function App() {
@@ -139,7 +140,16 @@ export default function App() {
   const [datosNegocio, setDatosNegocio] = useState<DatosNegocio>(() => {
     try {
       const saved = localStorage.getItem('fa_datos_negocio_v1');
-      return saved ? JSON.parse(saved) : DEFAULT_DATOS_NEGOCIO;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_DATOS_NEGOCIO,
+          ...parsed,
+          sector: parsed.sector || DEFAULT_DATOS_NEGOCIO.sector,
+          contextoOperativo: parsed.contextoOperativo || DEFAULT_DATOS_NEGOCIO.contextoOperativo,
+        };
+      }
+      return DEFAULT_DATOS_NEGOCIO;
     } catch {
       return DEFAULT_DATOS_NEGOCIO;
     }
@@ -496,15 +506,17 @@ export default function App() {
             .filter((l) => l.nombreProducto.toLowerCase() === linea.nombreProducto.toLowerCase());
 
           if (anteriores.length > 0) {
+            const configAlertas = obtenerConfiguracionAlertas();
             const precioPrevio = anteriores[anteriores.length - 1].precioUnitario;
-            if (linea.precioUnitario > precioPrevio * 1.08) {
+            const umbralRatio = 1 + configAlertas.umbralSubidaModeradaPct / 100;
+            if (linea.precioUnitario > precioPrevio * umbralRatio) {
               const varPct = ((linea.precioUnitario - precioPrevio) / precioPrevio) * 100;
               const nuevaAlerta: Alerta = {
                 id: `ALT-${Date.now()}-${Math.floor(Math.random() * 100)}`,
                 tipo: 'SUBIDA DE PRECIO',
-                nivel: varPct >= 15 ? 'critica' : 'alta',
+                nivel: varPct >= configAlertas.umbralSubidaCriticaPct ? 'critica' : 'alta',
                 titulo: `Subida detectada en ${linea.nombreProducto} (+${varPct.toFixed(1)}%)`,
-                descripcion: `El precio unitario subió de ${precioPrevio.toFixed(2)} € a ${linea.precioUnitario.toFixed(2)} € en la factura ${nuevaFactura.idFactura}.`,
+                descripcion: `El precio unitario subió de ${precioPrevio.toFixed(2)} € a ${linea.precioUnitario.toFixed(2)} € (+${varPct.toFixed(1)}%) en la factura ${nuevaFactura.idFactura}.`,
                 fecha: nuevaFactura.fechaEmision,
                 estado: 'activa',
                 datosRelacionados: {
@@ -844,6 +856,13 @@ export default function App() {
               onIgnorarAlerta={handleIgnorarAlerta}
               onVerFactura={(id) => {
                 setActiveTab('facturas');
+              }}
+              facturas={facturas}
+              onActualizarAlertas={(nuevas) => {
+                setAlertas(nuevas);
+                try {
+                  localStorage.setItem('fa_alertas_v1', JSON.stringify(nuevas));
+                } catch (e) {}
               }}
             />
           )}
