@@ -25,7 +25,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Sparkles,
-  Edit3
+  Edit3,
+  Download
 } from 'lucide-react';
 import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
 import { obtenerParametrosSistema } from '../utils/parametrosSistema';
@@ -126,6 +127,15 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
 
+  // Parámetros activos del sistema
+  const [parametrosActivos, setParametrosActivos] = useState(() => {
+    try {
+      return obtenerParametrosSistema();
+    } catch {
+      return {} as any;
+    }
+  });
+
   // Pagination State
   const [paginaActual, setPaginaActual] = useState(1);
   const [elementosPorPagina, setElementosPorPagina] = useState(() => {
@@ -136,10 +146,12 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
     }
   });
 
-  // Sincronizar paginación con cambios en los parámetros del sistema
+  // Sincronizar paginación y parámetros con cambios en los parámetros del sistema
   useEffect(() => {
     const handleParamsActualizados = (e: any) => {
-      const nuevoLimite = e?.detail?.facturasPorPagina;
+      const nuevosParams = e?.detail || obtenerParametrosSistema();
+      setParametrosActivos(nuevosParams);
+      const nuevoLimite = nuevosParams?.facturasPorPagina;
       if (typeof nuevoLimite === 'number' && nuevoLimite > 0) {
         setElementosPorPagina(nuevoLimite);
       }
@@ -631,6 +643,74 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   const facturasPaginadas = useMemo(() => {
     return facturasFiltradas.slice(indiceInicio, indiceFin);
   }, [facturasFiltradas, indiceInicio, indiceFin]);
+
+  // Exportar facturas filtradas/visibles a archivo CSV descargable
+  const exportarFacturasCSV = () => {
+    if (facturasFiltradas.length === 0) {
+      showNotification('No hay facturas visibles para exportar con los filtros actuales.');
+      return;
+    }
+
+    const encabezados = [
+      'ID Factura',
+      'Fecha Emisión',
+      'ID Proveedor',
+      'Nombre Proveedor',
+      'CIF Proveedor',
+      'Concepto',
+      'Base Imponible (€)',
+      'Tipos IVA (%)',
+      'Cuota IVA (€)',
+      'Total (€)',
+      'Categoría Gasto',
+      'Método de Pago',
+      'Estado',
+      'Enlace Google Drive',
+      'Carpeta Drive',
+      'Observaciones'
+    ];
+
+    const escapeCSV = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const filas = facturasFiltradas.map((f) => [
+      escapeCSV(f.idFactura),
+      escapeCSV(f.fechaEmision),
+      escapeCSV(f.idProveedor),
+      escapeCSV(f.nombreProveedor),
+      escapeCSV(f.cifProveedor || ''),
+      escapeCSV(f.concepto),
+      escapeCSV(Number(f.baseImponible || 0).toFixed(2).replace('.', ',')),
+      escapeCSV(f.tiposIVA || '21%'),
+      escapeCSV(Number(f.cuotaIVA || 0).toFixed(2).replace('.', ',')),
+      escapeCSV(Number(f.total || 0).toFixed(2).replace('.', ',')),
+      escapeCSV(f.categoriaGasto),
+      escapeCSV(f.metodoPago || ''),
+      escapeCSV(f.estado),
+      escapeCSV(f.driveFileUrl || ''),
+      escapeCSV(f.driveFolderName || ''),
+      escapeCSV(f.observaciones || '')
+    ].join(';'));
+
+    // UTF-8 BOM (\uFEFF) para compatibilidad nativa inmediata con Excel / Numbers / Calc en español
+    const csvContent = '\uFEFF' + [encabezados.map((h) => `"${h}"`).join(';'), ...filas].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const fechaActual = new Date().toISOString().substring(0, 10);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `facturas_exportadas_${fechaActual}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showNotification(`Se han exportado ${facturasFiltradas.length} factura(s) a archivo CSV descargable con éxito.`);
+  };
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
@@ -1161,7 +1241,22 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            <button
+              id="btn-exportar-facturas-csv"
+              onClick={exportarFacturasCSV}
+              disabled={facturasFiltradas.length === 0}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                facturasFiltradas.length > 0
+                  ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30 shadow-sm'
+                  : 'bg-slate-800/50 text-slate-500 border-slate-800 cursor-not-allowed'
+              }`}
+              title="Descargar archivo CSV con todas las facturas visibles y filtradas (útil para auditoría externa y copias de seguridad)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Exportar CSV ({facturasFiltradas.length})</span>
+            </button>
+
             {(busqueda || filtroProveedor !== 'TODOS' || filtroCategoria !== 'TODAS' || filtroEstado !== 'TODOS' || minImporte || maxImporte || fechaDesde || fechaHasta) && (
               <button
                 id="btn-limpiar-todos-filtros"
@@ -1328,18 +1423,22 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             </button>
             <button
               type="button"
-              id="btn-atajo-fechas-2026"
+              id="btn-atajo-fechas-ano"
               onClick={() => {
-                setFechaDesde('2026-01-01');
-                setFechaHasta('2026-12-31');
+                const ano = parametrosActivos?.anoFiscalReferencia || new Date().getFullYear();
+                setFechaDesde(`${ano}-01-01`);
+                setFechaHasta(`${ano}-12-31`);
               }}
               className={`px-2.5 py-1 rounded-md border transition-colors cursor-pointer ${
-                fechaDesde === '2026-01-01' && fechaHasta === '2026-12-31'
+                (() => {
+                  const ano = parametrosActivos?.anoFiscalReferencia || new Date().getFullYear();
+                  return fechaDesde === `${ano}-01-01` && fechaHasta === `${ano}-12-31`;
+                })()
                   ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 font-semibold'
                   : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
-              Año 2026
+              Año {parametrosActivos?.anoFiscalReferencia || new Date().getFullYear()}
             </button>
           </div>
         </div>
