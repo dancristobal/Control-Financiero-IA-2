@@ -146,16 +146,61 @@ export const EvolucionPreciosView: React.FC<EvolucionPreciosViewProps> = ({
     return mapa;
   }, [facturas]);
 
-  const listaNombresProductos = useMemo(() => {
-    return Object.keys(todosLosProductos).sort();
+  // Métricas agregadas por producto para determinar relevancia (gasto y volumen)
+  const productosConMetricas = useMemo(() => {
+    return Object.keys(todosLosProductos).map((nombre) => {
+      const puntos = todosLosProductos[nombre] || [];
+      const totalGasto = puntos.reduce((acc, p) => acc + (p.subtotal || 0), 0);
+      const totalCantidad = puntos.reduce((acc, p) => acc + (p.cantidad || 0), 0);
+      const totalCompras = puntos.length;
+      return {
+        nombre,
+        puntos,
+        totalGasto,
+        totalCantidad,
+        totalCompras,
+      };
+    });
   }, [todosLosProductos]);
 
-  // Selected product
-  const [productoSeleccionado, setProductoSeleccionado] = useState<string>(
-    listaNombresProductos.includes('Harina de fuerza 25 kg')
-      ? 'Harina de fuerza 25 kg'
-      : listaNombresProductos[0] || ''
-  );
+  // Producto con mayor gasto acumulado / volumen de compra como selección predeterminada inteligente
+  const productoPrincipalPorDefecto = useMemo(() => {
+    if (productosConMetricas.length === 0) return '';
+    const sorted = [...productosConMetricas].sort((a, b) => {
+      if (b.totalGasto !== a.totalGasto) {
+        return b.totalGasto - a.totalGasto;
+      }
+      if (b.totalCantidad !== a.totalCantidad) {
+        return b.totalCantidad - a.totalCantidad;
+      }
+      return b.totalCompras - a.totalCompras;
+    });
+    return sorted[0]?.nombre || '';
+  }, [productosConMetricas]);
+
+  const listaNombresProductos = useMemo(() => {
+    return [...productosConMetricas]
+      .sort((a, b) => b.totalGasto - a.totalGasto || a.nombre.localeCompare(b.nombre))
+      .map((p) => p.nombre);
+  }, [productosConMetricas]);
+
+  // Selected product: arranca de forma inteligente en el producto con mayor gasto / volumen acumulado
+  const [productoSeleccionado, setProductoSeleccionado] = useState<string>(() => {
+    if (productosConMetricas.length === 0) return '';
+    const sorted = [...productosConMetricas].sort(
+      (a, b) => b.totalGasto - a.totalGasto || b.totalCantidad - a.totalCantidad
+    );
+    return sorted[0]?.nombre || '';
+  });
+
+  // Mantener sincronizado el producto seleccionado si cambia el conjunto de datos o queda vacío
+  useEffect(() => {
+    if (!productoSeleccionado || !todosLosProductos[productoSeleccionado]) {
+      if (productoPrincipalPorDefecto) {
+        setProductoSeleccionado(productoPrincipalPorDefecto);
+      }
+    }
+  }, [productoSeleccionado, todosLosProductos, productoPrincipalPorDefecto]);
 
   // Provider filter: 'TODOS' or a specific provider name
   const [filtroProveedor, setFiltroProveedor] = useState<string>('TODOS');

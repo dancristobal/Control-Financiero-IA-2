@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Settings,
@@ -29,6 +29,9 @@ import {
   Save,
   Info,
   CalendarDays,
+  Tag,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 import {
   GoogleSheetsConfig,
@@ -36,6 +39,7 @@ import {
   DEFAULT_DATOS_NEGOCIO,
   ParametrosSistema,
   DEFAULT_PARAMETROS_SISTEMA,
+  CategoriaGastoDef,
 } from '../types';
 import { ThemeMode } from '../utils/theme';
 import {
@@ -43,6 +47,8 @@ import {
   guardarParametrosSistema,
   restablecerParametrosSistema,
 } from '../utils/parametrosSistema';
+import { obtenerCategoriasGasto } from '../utils/categoriasGasto';
+import { CategoriasGastoModal } from './CategoriasGastoModal';
 
 interface ConfiguracionModalProps {
   isOpen: boolean;
@@ -116,9 +122,21 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   } | null>(null);
   const [parametros, setParametros] = useState<ParametrosSistema>(() => obtenerParametrosSistema());
   const [guardadoExitosoParametros, setGuardadoExitosoParametros] = useState(false);
+  const [categoriasGastoLista, setCategoriasGastoLista] = useState<CategoriaGastoDef[]>(() =>
+    obtenerCategoriasGasto()
+  );
+  const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [tabActiva, setTabActiva] = useState<
-    'negocio' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
+    'negocio' | 'categorias' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
   >('negocio');
+
+  useEffect(() => {
+    const handleCatUpdated = (e: any) => {
+      setCategoriasGastoLista(e?.detail || obtenerCategoriasGasto());
+    };
+    window.addEventListener('categoriasGastoActualizadas', handleCatUpdated);
+    return () => window.removeEventListener('categoriasGastoActualizadas', handleCatUpdated);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -942,6 +960,21 @@ function handleGetFacturas(sheetId, tabName) {
             <span>Datos de Empresa</span>
           </button>
           <button
+            id="tab-categorias-gasto"
+            onClick={() => setTabActiva('categorias')}
+            className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+              tabActiva === 'categorias'
+                ? 'border-rose-500 text-rose-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5" />
+            <span>Categorías de Gasto</span>
+            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+              {categoriasGastoLista.length}
+            </span>
+          </button>
+          <button
             id="tab-parametros-sistema"
             onClick={() => setTabActiva('parametros')}
             className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
@@ -1174,6 +1207,74 @@ function handleGetFacturas(sheetId, tabName) {
                     </>
                   )}
                 </button>
+              </div>
+            </div>
+          )}
+
+          {tabActiva === 'categorias' && (
+            <div className="space-y-5" id="panel-gestion-categorias">
+              <div className="p-4 rounded-xl bg-[#0a0f18] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                    <Tag className="w-4 h-4" />
+                    <span>Catálogo de Categorías de Gasto Personalizadas</span>
+                  </div>
+                  <p className="text-slate-400 leading-relaxed text-[11px]">
+                    Define las categorías contables de tu sector. Gemini AI las utilizará automáticamente al escanear facturas y los gráficos del Resumen Financiero se agruparán según tus preferencias.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCategoriasModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-rose-950/40 shrink-0 cursor-pointer transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Añadir o Gestionar Categorías</span>
+                </button>
+              </div>
+
+              {/* Lista visual de categorías */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {categoriasGastoLista.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="p-3.5 rounded-xl bg-[#111827] border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between gap-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <span className="font-bold text-slate-100 text-xs truncate">
+                          {cat.nombre}
+                        </span>
+                      </div>
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0"
+                        style={{
+                          backgroundColor: `${cat.color}20`,
+                          color: cat.color,
+                          border: `1px solid ${cat.color}40`,
+                        }}
+                      >
+                        {cat.color}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      {cat.descripcion || 'Sin descripción detallada definida.'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2.5 text-xs text-slate-400">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  <strong>Integración directa con Inteligencia Artificial:</strong> Al crear o editar categorías, el prompt de extracción de facturas se adapta inmediatamente para clasificar tus compras en base a estas definiciones.
+                </p>
               </div>
             </div>
           )}
@@ -2303,6 +2404,12 @@ function handleGetFacturas(sheetId, tabName) {
           </div>
         </div>
       </div>
+
+      {/* Gestor Modal de Categorías de Gasto */}
+      <CategoriasGastoModal
+        isOpen={isCategoriasModalOpen}
+        onClose={() => setIsCategoriasModalOpen(false)}
+      />
     </div>
   );
 };

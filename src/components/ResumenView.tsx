@@ -14,7 +14,8 @@ import {
   Layers,
   ChevronRight,
   Printer,
-  Percent
+  Percent,
+  Tag
 } from 'lucide-react';
 import {
   AreaChart,
@@ -31,8 +32,9 @@ import {
   CartesianGrid,
   Legend
 } from 'recharts';
-import { Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO, CategoriaGastoDef } from '../types';
 import { obtenerParametrosSistema } from '../utils/parametrosSistema';
+import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
 
 interface ResumenViewProps {
   facturas: Factura[];
@@ -43,18 +45,10 @@ interface ResumenViewProps {
   onOpenUpload: () => void;
   onOpenAnalysis: () => void;
   onOpenPdfReport: () => void;
+  onOpenCategoriasModal?: () => void;
 }
 
 type PeriodFilter = '7d' | '30d' | 'trimestre' | 'ano' | 'personalizado';
-
-const CATEGORY_COLORS: Record<string, string> = {
-  'Materias Primas': '#f43f5e', // coral/rose
-  'Suministros y Energía': '#0ea5e9', // sky blue
-  'Envases y Embalajes': '#f59e0b', // amber
-  'Logística y Transporte': '#10b981', // emerald
-  'Mantenimiento y Maquinaria': '#8b5cf6', // purple
-  'Servicios y Gestión': '#ec4899', // pink
-};
 
 export const ResumenView: React.FC<ResumenViewProps> = ({
   facturas,
@@ -65,9 +59,11 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
   onOpenUpload,
   onOpenAnalysis,
   onOpenPdfReport,
+  onOpenCategoriasModal,
 }) => {
   const nombreNegocio = datosNegocio?.nombre || DEFAULT_DATOS_NEGOCIO.nombre;
   const [parametrosActivos, setParametrosActivos] = useState(() => obtenerParametrosSistema());
+  const [categoriasGasto, setCategoriasGasto] = useState<CategoriaGastoDef[]>(() => obtenerCategoriasGasto());
   const [periodo, setPeriodo] = useState<PeriodFilter>(() => {
     try {
       return obtenerParametrosSistema().periodoDashboardPredeterminado || 'ano';
@@ -91,9 +87,14 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         setPeriodo(nuevosParams.periodoDashboardPredeterminado);
       }
     };
+    const handleCategoriasActualizadas = (e: any) => {
+      setCategoriasGasto(e?.detail || obtenerCategoriasGasto());
+    };
     window.addEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    window.addEventListener('categoriasGastoActualizadas', handleCategoriasActualizadas);
     return () => {
       window.removeEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+      window.removeEventListener('categoriasGastoActualizadas', handleCategoriasActualizadas);
     };
   }, []);
 
@@ -332,9 +333,9 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
     return Object.keys(map).map((cat) => ({
       name: cat,
       value: Math.round(map[cat] * 100) / 100,
-      color: CATEGORY_COLORS[cat] || '#94a3b8',
+      color: obtenerColorCategoria(cat, categoriasGasto),
     }));
-  }, [facturasFiltradas]);
+  }, [facturasFiltradas, categoriasGasto]);
 
   // Principales Proveedores (Top 5)
   const datosTopProveedores = useMemo(() => {
@@ -917,12 +918,27 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         {/* Chart 2: Gastos por Categoría (Donut Chart) */}
         <div className="p-6 rounded-2xl bg-[#101726] border border-slate-800/80 flex flex-col justify-between">
           <div>
-            <h3 className="text-base font-bold text-slate-100">
-              2. Gastos por Categoría
-            </h3>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Distribución porcentual del presupuesto
-            </p>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div>
+                <h3 className="text-base font-bold text-slate-100">
+                  2. Gastos por Categoría
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Distribución porcentual del presupuesto
+                </p>
+              </div>
+              {onOpenCategoriasModal && (
+                <button
+                  type="button"
+                  onClick={onOpenCategoriasModal}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  title="Gestionar catálogo de categorías de gasto personalizadas"
+                >
+                  <Tag className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Gestionar</span>
+                </button>
+              )}
+            </div>
 
             <div className="h-52 w-full mt-3">
               <ResponsiveContainer width="100%" height="100%">

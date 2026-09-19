@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye, UploadCloud, Loader2, Sparkles, Edit3 } from 'lucide-react';
+import { X, FileText, CheckCircle2, Calendar, Building2, Tag, Layers, Download, Trash2, Eye, UploadCloud, Loader2, Sparkles, Edit3, StickyNote } from 'lucide-react';
 import { Factura } from '../types';
+import { obtenerColorCategoria } from '../utils/categoriasGasto';
 
 interface FacturaDetalleModalProps {
   factura: Factura | null;
@@ -100,8 +101,23 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
                 <Tag className="w-3 h-3 text-slate-500" />
                 <span>Categoría</span>
               </div>
-              <div className="text-xs font-semibold text-slate-200 mt-1 truncate">
-                {factura.categoriaGasto}
+              <div className="mt-1">
+                {(() => {
+                  const catColor = obtenerColorCategoria(factura.categoriaGasto);
+                  return (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5"
+                      style={{
+                        backgroundColor: `${catColor}20`,
+                        color: catColor,
+                        border: `1px solid ${catColor}40`,
+                      }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: catColor }} />
+                      <span className="truncate">{factura.categoriaGasto}</span>
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
@@ -123,6 +139,31 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
               {factura.concepto}
             </div>
           </div>
+
+          {/* Notas o Recordatorios Específicos */}
+          {factura.notas && factura.notas.trim() && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs">
+              <StickyNote className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 w-full">
+                <div className="font-semibold text-amber-300 flex items-center justify-between">
+                  <span>Notas o Recordatorios Específicos</span>
+                  {onEditarEnFormulario && (
+                    <button
+                      type="button"
+                      onClick={() => onEditarEnFormulario(factura)}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 underline font-normal flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Editar</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+                  {factura.notas}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Categoría Propuesta por Gemini */}
           {factura.categoriaGastoJustificacion && (

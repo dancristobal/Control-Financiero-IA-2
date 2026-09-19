@@ -17,9 +17,12 @@ import {
   ChevronDown,
   Info,
   Camera,
-  ArrowRight
+  ArrowRight,
+  StickyNote
 } from 'lucide-react';
-import { Factura, ProductoLinea, Proveedor, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { Factura, ProductoLinea, Proveedor, DatosNegocio, DEFAULT_DATOS_NEGOCIO, CategoriaGastoDef } from '../types';
+import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
+import { CategoriasGastoModal } from './CategoriasGastoModal';
 
 interface FormularioFacturaModalProps {
   isOpen: boolean;
@@ -40,17 +43,6 @@ interface FormularioFacturaModalProps {
     driveError?: string;
   }>;
 }
-
-const CATEGORIAS_COMUNES = [
-  { id: 'Insumos', label: 'Insumos', desc: 'Materias primas, ingredientes, alimentos, consumibles de producción', color: 'rose' },
-  { id: 'Logística', label: 'Logística', desc: 'Transporte, portes, fletes, distribución, mensajería, paquetería', color: 'emerald' },
-  { id: 'Servicios', label: 'Servicios', desc: 'Asesoría contable/fiscal, software, SaaS, hosting, consultoría, limpieza', color: 'sky' },
-  { id: 'Materias Primas', label: 'Materias Primas', desc: 'Harinas, lácteos, azúcares, ingredientes base', color: 'amber' },
-  { id: 'Envases y Embalajes', label: 'Envases y Embalajes', desc: 'Cajas kraft, bobinas, bandejas, film, bolsas, etiquetas', color: 'amber' },
-  { id: 'Suministros y Energía', label: 'Suministros y Energía', desc: 'Electricidad, gas, agua, telefonía e internet', color: 'cyan' },
-  { id: 'Mantenimiento y Maquinaria', label: 'Mantenimiento y Maquinaria', desc: 'Reparaciones, revisiones técnicas de hornos, recambios', color: 'purple' },
-  { id: 'Servicios y Gestión', label: 'Servicios y Gestión', desc: 'Honorarios profesionales y gestión administrativa', color: 'pink' },
-];
 
 export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
   isOpen,
@@ -84,16 +76,33 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
   const [nombreProveedor, setNombreProveedor] = useState(facturaInicial?.nombreProveedor || '');
   const [idProveedor, setIdProveedor] = useState(facturaInicial?.idProveedor || '');
   const [concepto, setConcepto] = useState(facturaInicial?.concepto || '');
-  const [categoriaGasto, setCategoriaGasto] = useState<string>(facturaInicial?.categoriaGasto || 'Insumos');
+  const [categoriasGastoLista, setCategoriasGastoLista] = useState<CategoriaGastoDef[]>(() =>
+    obtenerCategoriasGasto()
+  );
+  const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
+  const [categoriaGasto, setCategoriaGasto] = useState<string>(() => {
+    if (facturaInicial?.categoriaGasto) return facturaInicial.categoriaGasto;
+    const iniciales = obtenerCategoriasGasto();
+    return iniciales[0]?.nombre || 'Materias Primas';
+  });
   const [categoriaGastoJustificacion, setCategoriaGastoJustificacion] = useState<string>(
     facturaInicial?.categoriaGastoJustificacion || ''
   );
+
+  useEffect(() => {
+    const handleActualizadas = (e: any) => {
+      setCategoriasGastoLista(e?.detail || obtenerCategoriasGasto());
+    };
+    window.addEventListener('categoriasGastoActualizadas', handleActualizadas);
+    return () => window.removeEventListener('categoriasGastoActualizadas', handleActualizadas);
+  }, []);
   const [baseImponible, setBaseImponible] = useState<number>(facturaInicial?.baseImponible || 0);
   const [tiposIVA, setTiposIVA] = useState<string>(facturaInicial?.tiposIVA || '21%');
   const [cuotaIVA, setCuotaIVA] = useState<number>(facturaInicial?.cuotaIVA || 0);
   const [total, setTotal] = useState<number>(facturaInicial?.total || 0);
   const [estado, setEstado] = useState<'Pendiente' | 'Pagada' | 'Vencida'>(facturaInicial?.estado || 'Pendiente');
   const [fechaPago, setFechaPago] = useState<string>(facturaInicial?.fechaPago || 'Pendiente de confirmar');
+  const [notas, setNotas] = useState<string>(facturaInicial?.notas || '');
   const [lineas, setLineas] = useState<ProductoLinea[]>(facturaInicial?.lineas || []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,6 +125,7 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         setTotal(facturaInicial.total || 0);
         setEstado(facturaInicial.estado || 'Pendiente');
         setFechaPago(facturaInicial.fechaPago || 'Pendiente de confirmar');
+        setNotas(facturaInicial.notas || '');
         setLineas(facturaInicial.lineas || []);
         setSugerenciaIaActiva(Boolean(facturaInicial.categoriaGastoSugerida || facturaInicial.categoriaGastoJustificacion));
       }
@@ -132,16 +142,28 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
   // Helper to deduce category locally if needed
   const deducirCategoriaLocal = (prov: string, desc: string, items: ProductoLinea[]) => {
     const texto = `${prov} ${desc} ${items.map((l) => l.nombreProducto).join(' ')}`.toLowerCase();
+    
+    // Primero comprobar si coincide directamente con el nombre o descripción de alguna categoría personalizada
+    for (const cat of categoriasGastoLista) {
+      const nom = cat.nombre.toLowerCase();
+      if (texto.includes(nom)) {
+        return {
+          cat: cat.nombre,
+          razon: `Propuesto automáticamente como '${cat.nombre}' por coincidencia con "${prov || 'proveedor'}".`,
+        };
+      }
+    }
+
     if (/transporte|logistica|logística|envio|envío|flete|porte|mensajer|paqueter|seur|dhl|mrw|gls|ups|nacex|fedex|reparto|distribuc/.test(texto)) {
       return {
-        cat: 'Logística',
-        razon: `Propuesto automáticamente como 'Logística' al identificar transportes, portes o envíos de "${prov || 'proveedor'}".`,
+        cat: 'Logística y Transporte',
+        razon: `Propuesto automáticamente como 'Logística y Transporte' al identificar transportes, portes o envíos de "${prov || 'proveedor'}".`,
       };
     }
     if (/asesor|gestor|abogad|legal|software|licencia|hosting|cloud|consultor|seguro|limpieza|seguridad|auditor|honorario|banco|comision|cuota/.test(texto)) {
       return {
-        cat: 'Servicios',
-        razon: `Propuesto automáticamente como 'Servicios' por gestión profesional, tecnología o asesoría de "${prov || 'proveedor'}".`,
+        cat: 'Servicios y Gestión',
+        razon: `Propuesto automáticamente como 'Servicios y Gestión' por gestión profesional, tecnología o asesoría de "${prov || 'proveedor'}".`,
       };
     }
     if (/caja|carton|cartón|embalaj|envase|bolsa|film|bobina|kraft|etiqueta|empaque|plastico|plástico/.test(texto)) {
@@ -163,8 +185,8 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
       };
     }
     return {
-      cat: 'Insumos',
-      razon: `Propuesto automáticamente como 'Insumos' para producción y aprovisionamiento directo según el emisor "${prov || 'proveedor'}".`,
+      cat: categoriasGastoLista[0]?.nombre || 'Materias Primas',
+      razon: `Propuesto automáticamente como '${categoriasGastoLista[0]?.nombre || 'Materias Primas'}' para aprovisionamiento directo según el emisor "${prov || 'proveedor'}".`,
     };
   };
 
@@ -223,6 +245,7 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
           datosNegocio: resolvedNegocio,
           sector: resolvedNegocio.sector,
           contextoOperativo: resolvedNegocio.contextoOperativo,
+          categoriasDisponibles: categoriasGastoLista,
           existingSuppliers: proveedoresExistentes.map((p) => ({
             id: p.idProveedor,
             nombre: p.nombreProveedor,
@@ -253,6 +276,7 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
       if (f.total !== undefined) setTotal(f.total);
       if (f.estado) setEstado(f.estado as any);
       if (f.fechaPago) setFechaPago(f.fechaPago);
+      if (f.notas) setNotas(f.notas);
       if (f.lineas && Array.isArray(f.lineas)) setLineas(f.lineas);
 
       // AUTOCOMPLETE PROPOSED EXPENSE CATEGORY
@@ -372,6 +396,7 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         categoriaGastoSugerida: sugerenciaIaActiva,
         estado: estado,
         fechaPago: estado === 'Pagada' ? fechaPago : 'Pendiente de confirmar',
+        notas: notas.trim() || undefined,
         lineas: lineas,
         archivoNombre: fileName || facturaInicial?.archivoNombre,
         archivoBase64: fileBase64 || facturaInicial?.archivoBase64,
@@ -592,18 +617,30 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="text-xs font-bold text-slate-100 flex items-center gap-2">
                   <Tag className="w-4 h-4 text-rose-400" />
-                  <span>CATEGORÍA DE GASTO (Autocompletada con IA) *</span>
+                  <span>CATEGORÍA DE GASTO (Catálogo Personalizado) *</span>
                 </label>
 
-                <button
-                  type="button"
-                  onClick={handleRededucirCategoria}
-                  className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
-                  title="Deducir nuevamente la categoría en base al proveedor y descripción ingresados"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Re-deducir categoría con IA</span>
-                </button>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoriasModalOpen(true)}
+                    className="text-[11px] font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20"
+                    title="Crear o editar categorías de gasto personalizadas con color y descripción"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Gestionar Categorías</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRededucirCategoria}
+                    className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20"
+                    title="Deducir nuevamente la categoría en base al proveedor y descripción ingresados"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Re-deducir con IA</span>
+                  </button>
+                </div>
               </div>
 
               {/* Selector principal de categoría */}
@@ -617,36 +654,49 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-600 text-slate-100 text-xs font-bold focus:outline-none focus:border-rose-500"
                   >
-                    {CATEGORIAS_COMUNES.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.label}
+                    {categoriasGastoLista.map((cat) => (
+                      <option key={cat.id} value={cat.nombre}>
+                        {cat.nombre}
                       </option>
                     ))}
-                    {!CATEGORIAS_COMUNES.some((c) => c.id === categoriaGasto) && (
+                    {!categoriasGastoLista.some((c) => c.nombre.toLowerCase() === categoriaGasto.toLowerCase()) && (
                       <option value={categoriaGasto}>{categoriaGasto}</option>
                     )}
                   </select>
                 </div>
 
-                {/* Chips rápidos de categorías solicitadas (Insumos, Logística, Servicios, etc.) */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {['Insumos', 'Logística', 'Servicios', 'Materias Primas', 'Envases y Embalajes'].map((catName) => {
-                    const isSelected = categoriaGasto === catName;
+                {/* Chips rápidos de categorías dinámicas con color */}
+                <div className="flex flex-wrap items-center gap-1.5 max-h-24 overflow-y-auto pr-1">
+                  {categoriasGastoLista.map((cat) => {
+                    const isSelected = categoriaGasto.toLowerCase() === cat.nombre.toLowerCase();
                     return (
                       <button
-                        key={catName}
+                        key={cat.id}
                         type="button"
                         onClick={() => {
-                          setCategoriaGasto(catName);
+                          setCategoriaGasto(cat.nombre);
                           setSugerenciaIaActiva(false);
                         }}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                           isSelected
-                            ? 'bg-rose-600 text-white shadow-md shadow-rose-950/40'
+                            ? 'text-white shadow-md'
                             : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700/70'
                         }`}
+                        style={
+                          isSelected
+                            ? {
+                                backgroundColor: cat.color,
+                                boxShadow: `0 4px 12px ${cat.color}40`,
+                              }
+                            : undefined
+                        }
+                        title={cat.descripcion || cat.nombre}
                       >
-                        {catName}
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: isSelected ? '#ffffff' : cat.color }}
+                        />
+                        <span>{cat.nombre}</span>
                       </button>
                     );
                   })}
@@ -754,6 +804,25 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-rose-500 font-mono"
                 />
               </div>
+            </div>
+
+            {/* Notas y Recordatorios Específicos */}
+            <div className="md:col-span-2 space-y-1.5 pt-1">
+              <label htmlFor="input-factura-notas" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-amber-300">
+                  <StickyNote className="w-3.5 h-3.5" />
+                  <span>Notas o Recordatorios Específicos (Opcional)</span>
+                </span>
+                <span className="text-[11px] text-slate-400">Comentarios internos, acuerdos o recordatorios</span>
+              </label>
+              <textarea
+                id="input-factura-notas"
+                rows={2}
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                placeholder="Añade notas o recordatorios específicos sobre esta factura (ej: pago acordado con 5% de descuento por pronto pago, pendiente de cotejar con albarán nº 412, abono previsto en próxima remesa...)"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-amber-500/70 placeholder:text-slate-400 resize-y transition-colors leading-relaxed"
+              />
             </div>
           </div>
 
@@ -902,6 +971,16 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Gestor Modal de Categorías de Gasto */}
+      <CategoriasGastoModal
+        isOpen={isCategoriasModalOpen}
+        onClose={() => setIsCategoriasModalOpen(false)}
+        onCategoriaCreadaOActualizada={(nuevaCat) => {
+          setCategoriaGasto(nuevaCat.nombre);
+          setSugerenciaIaActiva(false);
+        }}
+      />
     </div>
   );
 };

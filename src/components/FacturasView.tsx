@@ -26,10 +26,12 @@ import {
   ChevronsRight,
   Sparkles,
   Edit3,
-  Download
+  Download,
+  StickyNote
 } from 'lucide-react';
-import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO } from '../types';
+import { Factura, ArchivoEnProceso, Proveedor, GoogleSheetsConfig, DatosNegocio, DEFAULT_DATOS_NEGOCIO, CategoriaGastoDef } from '../types';
 import { obtenerParametrosSistema } from '../utils/parametrosSistema';
+import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
 import { FacturaDetalleModal } from './FacturaDetalleModal';
 import { EliminarFacturaModal } from './EliminarFacturaModal';
 import { VisorFacturaModal } from './VisorFacturaModal';
@@ -126,6 +128,9 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   const [maxImporte, setMaxImporte] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [categoriasGasto, setCategoriasGasto] = useState<CategoriaGastoDef[]>(() =>
+    obtenerCategoriasGasto()
+  );
 
   // Parámetros activos del sistema
   const [parametrosActivos, setParametrosActivos] = useState(() => {
@@ -156,9 +161,14 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
         setElementosPorPagina(nuevoLimite);
       }
     };
+    const handleCategoriasActualizadas = (e: any) => {
+      setCategoriasGasto(e?.detail || obtenerCategoriasGasto());
+    };
     window.addEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+    window.addEventListener('categoriasGastoActualizadas', handleCategoriasActualizadas);
     return () => {
       window.removeEventListener('fa_parametros_sistema_updated', handleParamsActualizados);
+      window.removeEventListener('categoriasGastoActualizadas', handleCategoriasActualizadas);
     };
   }, []);
 
@@ -592,7 +602,8 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
           f.idFactura.toLowerCase().includes(q) ||
           f.nombreProveedor.toLowerCase().includes(q) ||
           f.concepto.toLowerCase().includes(q) ||
-          f.categoriaGasto.toLowerCase().includes(q);
+          f.categoriaGasto.toLowerCase().includes(q) ||
+          Boolean(f.notas && f.notas.toLowerCase().includes(q));
         if (!match) return false;
       }
       // Proveedor filter
@@ -667,7 +678,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
       'Estado',
       'Enlace Google Drive',
       'Carpeta Drive',
-      'Observaciones'
+      'Notas / Observaciones'
     ];
 
     const escapeCSV = (val: string | number | null | undefined): string => {
@@ -692,7 +703,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
       escapeCSV(f.estado),
       escapeCSV(f.driveFileUrl || ''),
       escapeCSV(f.driveFolderName || ''),
-      escapeCSV(f.observaciones || '')
+      escapeCSV(f.notas || f.observaciones || '')
     ].join(';'));
 
     // UTF-8 BOM (\uFEFF) para compatibilidad nativa inmediata con Excel / Numbers / Calc en español
@@ -1450,7 +1461,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar por ID, proveedor, concepto..."
+              placeholder="Buscar por ID, proveedor, concepto o notas..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full bg-[#0a0f18] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-rose-500"
@@ -1478,15 +1489,11 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             className="bg-[#0a0f18] border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
           >
             <option value="TODAS">Todas las categorías</option>
-            <option value="Insumos">Insumos</option>
-            <option value="Logística">Logística</option>
-            <option value="Servicios">Servicios</option>
-            <option value="Materias Primas">Materias Primas</option>
-            <option value="Envases y Embalajes">Envases y Embalajes</option>
-            <option value="Suministros y Energía">Suministros y Energía</option>
-            <option value="Logística y Transporte">Logística y Transporte</option>
-            <option value="Mantenimiento y Maquinaria">Mantenimiento y Maquinaria</option>
-            <option value="Servicios y Gestión">Servicios y Gestión</option>
+            {categoriasGasto.map((cat) => (
+              <option key={cat.id} value={cat.nombre}>
+                {cat.nombre}
+              </option>
+            ))}
           </select>
 
           {/* Status Select */}
@@ -1555,8 +1562,18 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                     <td className="p-3.5 font-medium text-slate-200 max-w-[170px] truncate">
                       {fac.nombreProveedor}
                     </td>
-                    <td className="p-3.5 text-slate-400 max-w-[200px] truncate">
-                      {fac.concepto}
+                    <td className="p-3.5 text-slate-400 max-w-[220px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{fac.concepto}</span>
+                        {fac.notas && fac.notas.trim() && (
+                          <span
+                            className="inline-flex items-center text-amber-400 hover:text-amber-300 shrink-0 cursor-help transition-colors"
+                            title={`Nota / Recordatorio:\n${fac.notas}`}
+                          >
+                            <StickyNote className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3.5 text-right text-slate-300 font-mono">
                       {fac.baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
@@ -1569,34 +1586,40 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                       {fac.total.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                     </td>
                     <td className="p-3.5 text-slate-300 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-medium border border-slate-700">
-                        {fac.categoriaGasto}
-                      </span>
+                      {(() => {
+                        const catColor = obtenerColorCategoria(fac.categoriaGasto, categoriasGasto);
+                        return (
+                          <span
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5"
+                            style={{
+                              backgroundColor: `${catColor}18`,
+                              color: catColor,
+                              border: `1px solid ${catColor}35`,
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: catColor }}
+                            />
+                            <span>{fac.categoriaGasto}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="p-3.5 whitespace-nowrap">
                       {fac.driveFileUrl ? (
                         <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFacturaParaVisor(fac);
-                            }}
-                            className="px-2 py-0.5 rounded bg-sky-950/60 hover:bg-sky-900/60 text-sky-300 border border-sky-500/25 text-[10px] font-mono flex items-center gap-1 max-w-[140px] transition-colors cursor-pointer"
-                            title={`Ver documento en visor integrado\nCarpeta: ${fac.driveFolderName || fac.nombreProveedor}\nArchivo: ${fac.driveFileName || `${fac.idFactura} ${fac.fechaEmision}.pdf`}`}
-                          >
-                            <span className="text-sky-400 shrink-0">📁</span>
-                            <span className="truncate">{fac.driveFolderName || fac.nombreProveedor}</span>
-                          </button>
                           <a
                             href={fac.driveFileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="text-sky-400 hover:text-sky-300 font-bold text-xs"
-                            title="Abrir en Google Drive"
+                            className="px-2 py-0.5 rounded bg-sky-950/60 hover:bg-sky-900/60 text-sky-300 border border-sky-500/25 text-[10px] font-mono flex items-center gap-1 max-w-[140px] transition-colors cursor-pointer"
+                            title={`Abrir archivo en Google Drive\nCarpeta: ${fac.driveFolderName || fac.nombreProveedor}\nArchivo: ${fac.driveFileName || `${fac.idFactura} ${fac.fechaEmision}.pdf`}`}
                           >
-                            ↗
+                            <span className="text-sky-400 shrink-0">📁</span>
+                            <span className="truncate">{fac.driveFolderName || fac.nombreProveedor}</span>
+                            <span className="text-sky-400 hover:text-sky-300 font-bold text-xs shrink-0">↗</span>
                           </a>
                         </div>
                       ) : (
@@ -1622,17 +1645,9 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                               + Drive
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFacturaParaVisor(fac);
-                            }}
-                            className="text-[10px] text-slate-400 hover:text-slate-200 font-mono underline decoration-dotted cursor-pointer"
-                            title="Ver documento digital en visor integrado"
-                          >
-                            Ver Doc
-                          </button>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {fac.archivoBase64 ? 'Local' : 'Sin archivo'}
+                          </span>
                         </div>
                       )}
                     </td>
@@ -1652,16 +1667,18 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                     <td className="p-3.5 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setFacturaParaVisor(fac);
                           }}
                           className="p-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 border border-sky-500/20 transition-colors cursor-pointer"
-                          title="Abrir Visor de PDF/Documento"
+                          title="Ver documento en visor integrado"
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             abrirFormularioConFactura(fac);
@@ -1671,22 +1688,14 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFacturaSeleccionada(fac);
-                          }}
-                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer"
-                        >
-                          Ver Detalle
-                        </button>
                         {onDeleteFactura && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setFacturaParaEliminar(fac);
                             }}
-                            className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 transition-colors cursor-pointer"
                             title="Eliminar factura coordinadamente"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

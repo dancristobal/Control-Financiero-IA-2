@@ -6,6 +6,14 @@ export interface ProductoLinea {
   subtotal: number;
 }
 
+export interface CategoriaGastoDef {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  color: string; // hex #f43f5e
+  esPredeterminada?: boolean;
+}
+
 export interface Factura {
   idFactura: string;
   fechaEmision: string;
@@ -34,6 +42,7 @@ export interface Factura {
   categoriaGastoJustificacion?: string;
   categoriaGastoSugerida?: boolean;
   lineas?: ProductoLinea[];
+  notas?: string;
   archivoNombre?: string;
   archivoBase64?: string;
   sincronizadoSheets?: boolean;

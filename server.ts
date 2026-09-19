@@ -72,6 +72,77 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ==========================================
+// CATÁLOGO DE CATEGORÍAS DE GASTO
+// ==========================================
+let storedCategoriasGasto: Array<{
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  color: string;
+  esPredeterminada?: boolean;
+}> = [
+  {
+    id: 'materias-primas',
+    nombre: 'Materias Primas',
+    descripcion: 'Harinas, lácteos, azúcares, ingredientes base y consumibles directos de producción.',
+    color: '#f43f5e',
+    esPredeterminada: true,
+  },
+  {
+    id: 'suministros-y-energia',
+    nombre: 'Suministros y Energía',
+    descripcion: 'Electricidad, gas, agua, telecomunicaciones, internet y suministros energéticos operativos.',
+    color: '#0ea5e9',
+    esPredeterminada: true,
+  },
+  {
+    id: 'envases-y-embalajes',
+    nombre: 'Envases y Embalajes',
+    descripcion: 'Cajas kraft, bobinas, bandejas, film, bolsas, etiquetas y material de empaquetado.',
+    color: '#f59e0b',
+    esPredeterminada: true,
+  },
+  {
+    id: 'logistica-y-transporte',
+    nombre: 'Logística y Transporte',
+    descripcion: 'Portes, transporte frigorífico/refrigerado, envíos urgentes, fletes y servicios de reparto.',
+    color: '#10b981',
+    esPredeterminada: true,
+  },
+  {
+    id: 'mantenimiento-y-maquinaria',
+    nombre: 'Mantenimiento y Maquinaria',
+    descripcion: 'Reparaciones técnicas, revisiones preventivas de hornos, climatización, recambios y herramientas.',
+    color: '#8b5cf6',
+    esPredeterminada: true,
+  },
+  {
+    id: 'servicios-y-gestion',
+    nombre: 'Servicios y Gestión',
+    descripcion: 'Asesoría contable, fiscal y laboral, licencias de software, seguros y servicios profesionales.',
+    color: '#ec4899',
+    esPredeterminada: true,
+  },
+];
+
+app.get('/api/categorias-gasto', (req, res) => {
+  res.json({ categorias: storedCategoriasGasto });
+});
+
+app.post('/api/categorias-gasto', (req, res) => {
+  const { categorias } = req.body;
+  if (Array.isArray(categorias) && categorias.length > 0) {
+    storedCategoriasGasto = categorias;
+    return res.json({
+      success: true,
+      count: storedCategoriasGasto.length,
+      categorias: storedCategoriasGasto,
+    });
+  }
+  return res.status(400).json({ error: 'Array de categorías no válido' });
+});
+
 // Helper function to calculate fully dynamic, grounded executive analysis from real data
 function generateGroundedExecutiveAnalysis(
   facturas: any[] = [],
@@ -231,7 +302,17 @@ function generateGroundedExecutiveAnalysis(
 // Endpoint: Extraer datos de factura con Gemini
 app.post('/api/gemini/extract-invoice', async (req, res) => {
   try {
-    const { fileData, mimeType, fileName, existingSuppliers, nombreNegocio, datosNegocio, sector, contextoOperativo } = req.body;
+    const {
+      fileData,
+      mimeType,
+      fileName,
+      existingSuppliers,
+      nombreNegocio,
+      datosNegocio,
+      sector,
+      contextoOperativo,
+      categoriasDisponibles,
+    } = req.body;
 
     if (!fileData) {
       return res.status(400).json({ error: 'No se ha proporcionado el archivo de factura.' });
@@ -243,6 +324,15 @@ app.post('/api/gemini/extract-invoice', async (req, res) => {
     const contextoNegocio = contextoOperativo || datosNegocio?.contextoOperativo || 'Actividad comercial regular con compras a proveedores';
     const nifNegocio = datosNegocio?.nif || '';
     const direccionNegocio = datosNegocio?.direccion || '';
+
+    // Obtener catálogo de categorías activas (predeterminadas + personalizadas por el usuario)
+    const catsToUse = Array.isArray(categoriasDisponibles) && categoriasDisponibles.length > 0
+      ? categoriasDisponibles
+      : storedCategoriasGasto;
+
+    const listaCatsPrompt = catsToUse
+      .map((c: any) => `- "${c.nombre}": ${c.descripcion || 'Gastos de la actividad'}`)
+      .join('\n');
 
     // Si no hay clave de API configurada, advertir con claridad en lugar de falsear datos
     if (!ai) {
@@ -263,14 +353,10 @@ REGLAS OBLIGATORIAS:
 1. El receptor o cliente de la factura es "${empresa}" (NIF: ${nifNegocio}). El emisor o vendedor es el proveedor. NO confundir el proveedor con el cliente receptor.
 2. PROPUESTA AUTOMÁTICA DE CATEGORÍA DE GASTO ("categoriaGasto"):
 Debes analizar minuciosamente el NOMBRE DEL PROVEEDOR (emisor) y la DESCRIPCIÓN/DETALLE DE LOS PRODUCTOS O SERVICIOS facturados para proponer automáticamente la categoría de gasto más exacta.
-Categorías de referencia:
-- "Insumos" (o "Materias Primas"): Cuando el proveedor suministre materias primas, ingredientes alimentarios, consumibles operativos de producción o insumos directos (ej. harinas, lácteos, grasas, levaduras, frutas, productos alimenticios, insumos de elaboración).
-- "Logística": Cuando el proveedor o la descripción correspondan a portes, transportes, fletes, distribución, envíos, paquetería, mensajería o servicios de reparto (ej. agencias de transporte, couriers, portes de mercancías).
-- "Servicios": Cuando el proveedor facture servicios profesionales, asesoría fiscal/laboral/contable, licencias de software, hosting, consultoría, limpieza, seguros, seguridad o gestión externa.
-- "Envases y Embalajes": Cajas de cartón, bobinas kraft, bandejas, bolsas, botellas, etiquetas y materiales de empaquetado.
-- "Suministros y Energía": Electricidad, gas, agua, telecomunicaciones o combustibles.
-- "Mantenimiento y Maquinaria": Reparación de equipos, hornos, piezas de recambio, revisiones técnicas preventivas o correctivas.
-En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el proveedor y la descripción del producto justifican la categoría elegida (ej: "Propuesto como 'Logística' porque el proveedor Transportes Norte factura servicio de porte urgente").
+Catálogo de categorías disponibles en el sistema para esta empresa:
+${listaCatsPrompt}
+
+En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el proveedor y la descripción del producto justifican la categoría elegida (ej: "Propuesto como '${catsToUse[0]?.nombre || 'Materias Primas'}' porque el proveedor suministra...").
 3. No inventar datos. Si un campo no existe en el documento, escribe exactamente: "Pendiente de confirmar".
 4. Mantener exactamente el nombre del producto o servicio si aparece en las líneas.
 5. Extraer los importes numéricos en euros sin símbolos de moneda.
@@ -308,7 +394,7 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
         total: { type: Type.NUMBER, description: 'Importe total factura con impuestos' },
         categoriaGasto: {
           type: Type.STRING,
-          description: 'Categoría de gasto propuesta automáticamente según el nombre del proveedor y la descripción de los productos (ej. "Insumos", "Logística", "Servicios", "Materias Primas", "Envases y Embalajes", "Suministros y Energía", "Mantenimiento y Maquinaria")'
+          description: `Categoría de gasto elegida entre: ${catsToUse.map((c: any) => `"${c.nombre}"`).join(', ')}`
         },
         categoriaGastoJustificacion: {
           type: Type.STRING,
@@ -834,6 +920,7 @@ app.post('/api/sheets/save-invoice', async (req, res) => {
       cuotaIVA: factura.cuotaIVA,
       total: factura.total,
       categoriaGasto: factura.categoriaGasto,
+      notas: factura.notas || undefined,
       lineas: factura.lineas || [],
       sincronizadoSheets: true,
       archivoNombre: nombreOriginal,
@@ -1324,6 +1411,8 @@ function parseRawSheetRow(row: any[], index: number): any {
     fechaPago = fechaEmision;
   }
 
+  const notas = (is15Cols && row.length >= 16) ? String(row[15] || '').trim() : (!is15Cols && row.length >= 15) ? String(row[14] || '').trim() : '';
+
   return {
     idFactura,
     fechaEmision,
@@ -1339,6 +1428,7 @@ function parseRawSheetRow(row: any[], index: number): any {
     cuotaIVA,
     total,
     categoriaGasto,
+    notas: notas || undefined,
     sincronizadoSheets: true,
     driveFileUrl: driveFileUrl.startsWith('http') ? driveFileUrl : undefined,
     driveFileName: `${idFactura} ${fechaEmision}.pdf`,
