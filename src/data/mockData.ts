@@ -456,6 +456,101 @@ export const INITIAL_FACTURAS: Factura[] = [
     ],
     archivoNombre: 'FAC-2026-092_EsenciasAgosto.pdf',
     sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-095',
+    fechaEmision: '2026-09-02',
+    idProveedor: 'PROV-007',
+    nombreProveedor: 'Cooperativa Oleícola Sierra de Cazorla',
+    concepto: 'Aceite de oliva virgen extra cosecha temprana obrador (Tipo temporal 0%)',
+    importe: 980.00,
+    fechaVencimiento: '2026-10-02',
+    estado: 'Pagada',
+    fechaPago: '2026-09-05',
+    baseImponible: 980.00,
+    tiposIVA: '0% (Temporal)',
+    cuotaIVA: 0.00,
+    total: 980.00,
+    regimenFiscal: 'Tipos Temporales / Alimentos',
+    categoriaGasto: 'Materias Primas',
+    lineas: [
+      { nombreProducto: 'Aceite de Oliva Virgen Extra 5L garrafa', cantidad: 20, unidad: 'garrafas', precioUnitario: 49.00, subtotal: 980.00 }
+    ],
+    notas: 'Aplicación del tipo superreducido temporal al 0% para aceite de oliva (RDL 4/2024)',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-098',
+    fechaEmision: '2026-09-08',
+    idProveedor: 'PROV-008',
+    nombreProveedor: 'Pastas & Harinas Especiales Mediterráneo S.L.',
+    concepto: 'Pastas alimenticias secas y sémolas panificables (Tipo temporal 5%)',
+    importe: 650.00,
+    fechaVencimiento: '2026-10-08',
+    estado: 'Pagada',
+    fechaPago: '2026-09-12',
+    baseImponible: 650.00,
+    tiposIVA: '5% (Temporal)',
+    cuotaIVA: 32.50,
+    total: 682.50,
+    regimenFiscal: 'Tipos Temporales / Alimentos',
+    categoriaGasto: 'Materias Primas',
+    lineas: [
+      { nombreProducto: 'Sémola de trigo duro especial 25kg', cantidad: 10, unidad: 'sacos', precioUnitario: 35.00, subtotal: 350.00 },
+      { nombreProducto: 'Pasta artesanal hojaldrada base', cantidad: 15, unidad: 'cajas', precioUnitario: 20.00, subtotal: 300.00 }
+    ],
+    notas: 'Tipo impositivo temporal reducido del 5% aplicable a pastas y derivados.',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-102',
+    fechaEmision: '2026-09-14',
+    idProveedor: 'PROV-009',
+    nombreProveedor: 'Envases & Embalajes del Atlántico S.L. (Tenerife)',
+    concepto: 'Cajas kraft microcanal personalizadas despacho Canarias (IGIC 7%)',
+    importe: 1420.00,
+    fechaVencimiento: '2026-10-14',
+    estado: 'Pendiente',
+    fechaPago: 'Pendiente de confirmar',
+    baseImponible: 1420.00,
+    tiposIVA: 'IGIC 7%',
+    cuotaIVA: 99.40,
+    total: 1519.40,
+    regimenFiscal: 'IGIC Canario',
+    tipoImpuestoNombre: 'IGIC',
+    categoriaGasto: 'Envases y Embalajes',
+    lineas: [
+      { nombreProducto: 'Cajas pastelería kraft 30x30 con ventana', cantidad: 1000, unidad: 'ud', precioUnitario: 0.95, subtotal: 950.00 },
+      { nombreProducto: 'Bolsas take-away asa plana reforzadas', cantidad: 1000, unidad: 'ud', precioUnitario: 0.47, subtotal: 470.00 }
+    ],
+    notas: 'Suministro con régimen fiscal canario: Impuesto General Indirecto Canario (IGIC General 7%)',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-105',
+    fechaEmision: '2026-09-17',
+    idProveedor: 'PROV-010',
+    nombreProveedor: 'Distribuciones Gourmet & Utillaje S.L.',
+    concepto: 'Utillaje de repostería y bandejas inox (IVA 21% + R.E. 5,2%)',
+    importe: 1200.00,
+    fechaVencimiento: '2026-10-17',
+    estado: 'Pendiente',
+    fechaPago: 'Pendiente de confirmar',
+    baseImponible: 1200.00,
+    tiposIVA: '21% + 5.2% RE',
+    cuotaIVA: 252.00,
+    aplicaRecargoEquivalencia: true,
+    tipoRecargoEquivalencia: '5.2%',
+    cuotaRecargoEquivalencia: 62.40,
+    total: 1514.40,
+    regimenFiscal: 'Recargo de Equivalencia',
+    categoriaGasto: 'Mantenimiento y Maquinaria',
+    lineas: [
+      { nombreProducto: 'Bandejas pasteleras inox 60x40', cantidad: 20, unidad: 'ud', precioUnitario: 35.00, subtotal: 700.00 },
+      { nombreProducto: 'Mangas pasteleras y boquillas profesionales', cantidad: 10, unidad: 'packs', precioUnitario: 50.00, subtotal: 500.00 }
+    ],
+    notas: 'Factura con desglose de IVA (21% = 252,00 €) y Recargo de Equivalencia para comercio minorista (5,2% = 62,40 €). Total: 1.514,40 €',
+    sincronizadoSheets: true
   }
 ];
 

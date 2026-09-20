@@ -40,6 +40,7 @@ import {
   ParametrosSistema,
   DEFAULT_PARAMETROS_SISTEMA,
   CategoriaGastoDef,
+  TIPOS_IMPOSITIVOS_PREDETERMINADOS,
 } from '../types';
 import { ThemeMode } from '../utils/theme';
 import {
@@ -49,6 +50,7 @@ import {
 } from '../utils/parametrosSistema';
 import { obtenerCategoriasGasto } from '../utils/categoriasGasto';
 import { CategoriasGastoModal } from './CategoriasGastoModal';
+import { ConfiguracionFiscalTab } from './ConfiguracionFiscalTab';
 
 interface ConfiguracionModalProps {
   isOpen: boolean;
@@ -61,6 +63,7 @@ interface ConfiguracionModalProps {
   onSetTheme?: (theme: ThemeMode) => void;
   datosNegocio?: DatosNegocio;
   onSaveDatosNegocio?: (datos: DatosNegocio) => void;
+  initialTab?: 'negocio' | 'categorias' | 'fiscalidad' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia';
 }
 
 export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
@@ -74,6 +77,7 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   onSetTheme,
   datosNegocio,
   onSaveDatosNegocio,
+  initialTab = 'negocio',
 }) => {
   const [sheetId, setSheetId] = useState(config.sheetId || '');
   const [endpointUrl, setEndpointUrl] = useState(config.endpointUrl || '');
@@ -127,8 +131,14 @@ export const ConfiguracionModal: React.FC<ConfiguracionModalProps> = ({
   );
   const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [tabActiva, setTabActiva] = useState<
-    'negocio' | 'categorias' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
-  >('negocio');
+    'negocio' | 'categorias' | 'fiscalidad' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
+  >(initialTab || 'negocio');
+
+  useEffect(() => {
+    if (initialTab) {
+      setTabActiva(initialTab);
+    }
+  }, [initialTab, isOpen]);
 
   useEffect(() => {
     const handleCatUpdated = (e: any) => {
@@ -975,6 +985,21 @@ function handleGetFacturas(sheetId, tabName) {
             </span>
           </button>
           <button
+            id="tab-configuracion-fiscal"
+            onClick={() => setTabActiva('fiscalidad')}
+            className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
+              tabActiva === 'fiscalidad'
+                ? 'border-rose-500 text-rose-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Percent className="w-3.5 h-3.5" />
+            <span>Configuración Fiscal</span>
+            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+              {(parametros.tiposImpositivos || []).filter((t) => t.habilitado).length || 10}
+            </span>
+          </button>
+          <button
             id="tab-parametros-sistema"
             onClick={() => setTabActiva('parametros')}
             className={`px-4 py-3 border-b-2 transition-colors flex items-center gap-2 shrink-0 ${
@@ -1276,6 +1301,18 @@ function handleGetFacturas(sheetId, tabName) {
                   <strong>Integración directa con Inteligencia Artificial:</strong> Al crear o editar categorías, el prompt de extracción de facturas se adapta inmediatamente para clasificar tus compras en base a estas definiciones.
                 </p>
               </div>
+            </div>
+          )}
+
+          {tabActiva === 'fiscalidad' && (
+            <div id="panel-gestion-fiscalidad">
+              <ConfiguracionFiscalTab
+                parametros={parametros}
+                onUpdateParametros={(nuevos) => {
+                  setParametros(nuevos);
+                  guardarParametrosSistema(nuevos);
+                }}
+              />
             </div>
           )}
 
@@ -1900,13 +1937,19 @@ function handleGetFacturas(sheetId, tabName) {
                     <Percent className="w-4 h-4" />
                     <span className="uppercase tracking-wider">5. Fiscalidad e Impuestos Predeterminados</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono">IvaView / Contabilidad</span>
+                  <button
+                    type="button"
+                    onClick={() => setTabActiva('fiscalidad')}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-bold flex items-center gap-1 hover:underline"
+                  >
+                    <span>Configurar Catálogo Completo (IVA/IGIC/IPSI) →</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-slate-300">
-                      Tipo de IVA Predeterminado para Nuevos Registros
+                      Tipo Impositivo Predeterminado para Nuevos Registros
                     </label>
                     <select
                       value={parametros.tipoIvaPredeterminado}
@@ -1918,14 +1961,69 @@ function handleGetFacturas(sheetId, tabName) {
                       }
                       className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 font-mono"
                     >
-                      <option value="21%">21% (Régimen General)</option>
-                      <option value="10%">10% (Reducido - Hostelería y Alimentos)</option>
-                      <option value="4%">4% (Superreducido - Harinas y Panadería Básica)</option>
-                      <option value="0%">0% (Operaciones Exentas)</option>
+                      {(parametros.tiposImpositivos || TIPOS_IMPOSITIVOS_PREDETERMINADOS)
+                        .filter((t) => t.habilitado)
+                        .map((t) => (
+                          <option key={t.id} value={t.valor}>
+                            {t.nombre} ({t.porcentaje}%{t.porcentajeRecargo > 0 ? ` + R.E. ${t.porcentajeRecargo}%` : ''})
+                          </option>
+                        ))}
                     </select>
                     <p className="text-[10px] text-slate-400">
-                      Tipo impositivo aplicado de forma automática en facturas sin desglose explícito.
+                      Tipo impositivo aplicado automáticamente en facturas sin desglose explícito.
                     </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-300">
+                      Régimen Tributario Predeterminado
+                    </label>
+                    <select
+                      value={parametros.regimenFiscalEmpresa || parametros.regimenFiscalPredeterminado || 'IVA_GENERAL'}
+                      onChange={(e) => {
+                        const val = e.target.value as any;
+                        setParametros({
+                          ...parametros,
+                          regimenFiscalEmpresa: val === 'TODOS' ? 'MULTIRREGIMEN' : val,
+                          regimenFiscalPredeterminado: val,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0a0f18] border border-slate-700 text-slate-100 text-xs focus:outline-hidden focus:border-rose-500 font-mono"
+                    >
+                      <option value="IVA_GENERAL">Régimen General Peninsular (IVA 21%, 10%, 4%)</option>
+                      <option value="IGIC_CANARIAS">Régimen Autonómico Canario (IGIC 7%, 3%)</option>
+                      <option value="IPSI_CEUTA_MELILLA">Régimen Especial Ceuta y Melilla (IPSI)</option>
+                      <option value="RECARGO_EQUIVALENCIA">Régimen Especial Recargo de Equivalencia (R.E.)</option>
+                      <option value="MULTIRREGIMEN">Consolidado / Multirégimen (Todos los tipos)</option>
+                      <option value="EXENTO_FRANQUICIA">Franquicia Fiscal / Operaciones Exentas</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">
+                      Define el régimen fiscal de tu empresa y la vista en el panel de impuestos.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-semibold text-slate-200">
+                        Régimen de Recargo de Equivalencia (R.E.)
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Marcar automáticamente para comerciantes minoristas autónomos (5,2%, 1,4%, 0,5%).
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(parametros.aplicaRecargoEquivalenciaDefecto)}
+                      onChange={(e) =>
+                        setParametros({
+                          ...parametros,
+                          aplicaRecargoEquivalenciaDefecto: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 rounded border-slate-700 text-purple-600 focus:ring-purple-500 cursor-pointer shrink-0"
+                    />
                   </div>
 
                   <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-3">

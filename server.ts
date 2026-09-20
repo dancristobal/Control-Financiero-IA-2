@@ -360,7 +360,12 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
 3. No inventar datos. Si un campo no existe en el documento, escribe exactamente: "Pendiente de confirmar".
 4. Mantener exactamente el nombre del producto o servicio si aparece en las líneas.
 5. Extraer los importes numéricos en euros sin símbolos de moneda.
-6. Tipo de IVA: Extraer el porcentaje exacto (ej: '21%', '10%', '4%', o '10% y 21%').
+6. Tipo de Gravamen e Impuestos:
+   - Régimen General Peninsular: '21%', '10%', '4%'.
+   - Tipos temporales reducidos de alimentos/aceite de oliva: '0% (Temporal)', '5% (Temporal)', '2% (Temporal)'.
+   - Régimen autonómico canario: 'IGIC 7%', 'IGIC 3%', 'IGIC 0%'.
+   - Recargo de Equivalencia (R.E.): Si la factura indica recargo de equivalencia (minoristas), marcar "aplicaRecargoEquivalencia: true", extraer la cuota del recargo en "cuotaRecargoEquivalencia" e indicar el tipo en "tipoRecargoEquivalencia" (ej: '5.2%', '1.4%', '0.5%', '0.62%', '0.7%').
+   - Operaciones exentas: '0% Exento'.
 7. Si conoces la lista de proveedores registrados: ${JSON.stringify(existingSuppliers || [])}, intenta vincular el idProveedor si coincide el nombre del proveedor. Si es nuevo, asígnale un ID coherente.`;
 
     const cleanBase64 = fileData.includes('base64,') ? fileData.split('base64,')[1] : fileData;
@@ -372,7 +377,7 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
     };
 
     const textPart = {
-      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema, proponiendo automáticamente la categoría de gasto adecuada en base al proveedor y los productos.`,
+      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema, contemplando el régimen fiscal (IVA Peninsular 21/10/4%, temporales 0/5%, IGIC canario 7/3% o Recargo de Equivalencia) y proponiendo automáticamente la categoría de gasto adecuada.`,
     };
 
     let parsedJson: any = null;
@@ -389,9 +394,13 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
         estado: { type: Type.STRING, description: 'Estado: Pagada, Pendiente o Vencida' },
         fechaPago: { type: Type.STRING, description: 'Fecha en que se pagó o "Pendiente de confirmar"' },
         baseImponible: { type: Type.NUMBER, description: 'Base imponible total' },
-        tiposIVA: { type: Type.STRING, description: 'Porcentaje o tipos de IVA aplicados, ej: "21%", "10%", "4%"' },
-        cuotaIVA: { type: Type.NUMBER, description: 'Importe de cuota de IVA en euros' },
-        total: { type: Type.NUMBER, description: 'Importe total factura con impuestos' },
+        tiposIVA: { type: Type.STRING, description: 'Porcentaje o tipos aplicados, ej: "21%", "10%", "4%", "0% (Temporal)", "5% (Temporal)", "IGIC 7%"' },
+        cuotaIVA: { type: Type.NUMBER, description: 'Importe de cuota de IVA o IGIC en euros' },
+        regimenFiscal: { type: Type.STRING, description: 'Régimen fiscal: Régimen General Peninsular, Tipos Temporales / Alimentos, IGIC Canario, Recargo de Equivalencia, o Exento' },
+        aplicaRecargoEquivalencia: { type: Type.BOOLEAN, description: 'true si la factura contiene recargo de equivalencia minorista' },
+        tipoRecargoEquivalencia: { type: Type.STRING, description: 'Porcentaje del recargo de equivalencia ej: "5.2%", "1.4%", "0.5%", "0.62%", "0.7%"' },
+        cuotaRecargoEquivalencia: { type: Type.NUMBER, description: 'Importe de la cuota del recargo de equivalencia en euros' },
+        total: { type: Type.NUMBER, description: 'Importe total factura con impuestos (Base + IVA/IGIC + Recargo si aplica)' },
         categoriaGasto: {
           type: Type.STRING,
           description: `Categoría de gasto elegida entre: ${catsToUse.map((c: any) => `"${c.nombre}"`).join(', ')}`

@@ -157,8 +157,20 @@ export default function App() {
 
   // Modals Visibility
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [configInitialTab, setConfigInitialTab] = useState<
+    'negocio' | 'categorias' | 'fiscalidad' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
+  >('negocio');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPdfReportOpen, setIsPdfReportOpen] = useState(false);
+
+  const handleOpenConfig = (
+    tab?: 'negocio' | 'categorias' | 'fiscalidad' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
+  ) => {
+    if (tab) {
+      setConfigInitialTab(tab);
+    }
+    setIsConfigOpen(true);
+  };
 
   // Sync with localStorage
   useEffect(() => {
@@ -868,7 +880,10 @@ export default function App() {
           )}
 
           {activeTab === 'iva' && (
-            <IvaView facturas={facturas} />
+            <IvaView
+              facturas={facturas}
+              onOpenConfiguracion={(tab) => handleOpenConfig((tab as any) || 'fiscalidad')}
+            />
           )}
 
           {activeTab === 'analisis-ia' && (
@@ -910,6 +925,7 @@ export default function App() {
       <ConfiguracionModal
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
+        initialTab={configInitialTab}
         config={sheetsConfig}
         onSaveConfig={setSheetsConfig}
         onResetData={handleResetData}

@@ -116,10 +116,38 @@ export function obtenerParametrosSistema(): ParametrosSistema {
         typeof parsed.tipoIvaPredeterminado === 'string' && parsed.tipoIvaPredeterminado.trim() !== ''
           ? parsed.tipoIvaPredeterminado
           : base.tipoIvaPredeterminado,
+      regimenFiscalEmpresa:
+        ['IVA_PENINSULAR', 'IGIC_CANARIAS', 'IPSI_CEUTA_MELILLA', 'RECARGO_EQUIVALENCIA', 'EXENTO_FRANQUICIA', 'MULTIRREGIMEN'].includes(parsed.regimenFiscalEmpresa)
+          ? parsed.regimenFiscalEmpresa
+          : base.regimenFiscalEmpresa,
+      regimenFiscalPredeterminado:
+        ['IVA_PENINSULAR', 'IGIC_CANARIAS', 'IPSI_CEUTA_MELILLA', 'RECARGO_EQUIVALENCIA', 'TODOS'].includes(parsed.regimenFiscalPredeterminado)
+          ? parsed.regimenFiscalPredeterminado
+          : base.regimenFiscalPredeterminado,
+      aplicaRecargoEquivalenciaDefecto:
+        parsed.aplicaRecargoEquivalenciaDefecto !== undefined
+          ? Boolean(parsed.aplicaRecargoEquivalenciaDefecto)
+          : base.aplicaRecargoEquivalenciaDefecto,
       permitirIvaCeroOExento:
         parsed.permitirIvaCeroOExento !== undefined
           ? Boolean(parsed.permitirIvaCeroOExento)
           : base.permitirIvaCeroOExento,
+      mostrarTiposTemporales:
+        parsed.mostrarTiposTemporales !== undefined
+          ? Boolean(parsed.mostrarTiposTemporales)
+          : base.mostrarTiposTemporales,
+      mostrarTiposCanarios:
+        parsed.mostrarTiposCanarios !== undefined
+          ? Boolean(parsed.mostrarTiposCanarios)
+          : base.mostrarTiposCanarios,
+      mostrarTiposIpsi:
+        parsed.mostrarTiposIpsi !== undefined
+          ? Boolean(parsed.mostrarTiposIpsi)
+          : base.mostrarTiposIpsi,
+      tiposImpositivos:
+        Array.isArray(parsed.tiposImpositivos) && parsed.tiposImpositivos.length > 0
+          ? parsed.tiposImpositivos
+          : base.tiposImpositivos,
 
       actualizadoEn: parsed.actualizadoEn,
     };

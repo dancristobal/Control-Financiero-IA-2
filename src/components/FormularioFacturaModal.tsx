@@ -20,9 +20,26 @@ import {
   ArrowRight,
   StickyNote
 } from 'lucide-react';
-import { Factura, ProductoLinea, Proveedor, DatosNegocio, DEFAULT_DATOS_NEGOCIO, CategoriaGastoDef } from '../types';
+import {
+  Factura,
+  ProductoLinea,
+  Proveedor,
+  DatosNegocio,
+  DEFAULT_DATOS_NEGOCIO,
+  CategoriaGastoDef,
+  ParametrosSistema,
+  TipoImpositivoConfigurable,
+  TIPOS_IMPOSITIVOS_PREDETERMINADOS,
+} from '../types';
 import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
 import { CategoriasGastoModal } from './CategoriasGastoModal';
+import { obtenerParametrosSistema } from '../utils/parametrosSistema';
+import {
+  CATALOGO_TIPOS_IMPOSITIVOS,
+  calcularLiquidacionFactura,
+  analizarStringTipoImpositivo,
+  obtenerRecargoEquivalenciaSugerido
+} from '../utils/fiscalidad';
 
 interface FormularioFacturaModalProps {
   isOpen: boolean;
@@ -96,9 +113,64 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
     window.addEventListener('categoriasGastoActualizadas', handleActualizadas);
     return () => window.removeEventListener('categoriasGastoActualizadas', handleActualizadas);
   }, []);
+
+  // Fiscal configuration from system parameters
+  const [parametros, setParametros] = useState<ParametrosSistema>(() => obtenerParametrosSistema());
+  const [tiposConfigurados, setTiposConfigurados] = useState<TipoImpositivoConfigurable[]>(() => {
+    const p = obtenerParametrosSistema();
+    return Array.isArray(p.tiposImpositivos) && p.tiposImpositivos.length > 0
+      ? p.tiposImpositivos
+      : TIPOS_IMPOSITIVOS_PREDETERMINADOS;
+  });
+
+  useEffect(() => {
+    const handleParamsUpdated = () => {
+      const p = obtenerParametrosSistema();
+      setParametros(p);
+      if (Array.isArray(p.tiposImpositivos) && p.tiposImpositivos.length > 0) {
+        setTiposConfigurados(p.tiposImpositivos);
+      }
+    };
+    window.addEventListener('parametrosSistemaActualizados', handleParamsUpdated);
+    window.addEventListener('storage', handleParamsUpdated);
+    return () => {
+      window.removeEventListener('parametrosSistemaActualizados', handleParamsUpdated);
+      window.removeEventListener('storage', handleParamsUpdated);
+    };
+  }, []);
+
   const [baseImponible, setBaseImponible] = useState<number>(facturaInicial?.baseImponible || 0);
-  const [tiposIVA, setTiposIVA] = useState<string>(facturaInicial?.tiposIVA || '21%');
+  const [tiposIVA, setTiposIVA] = useState<string>(() => {
+    if (facturaInicial?.tiposIVA) return facturaInicial.tiposIVA;
+    const p = obtenerParametrosSistema();
+    return p.tipoIvaPredeterminado || '21%';
+  });
   const [cuotaIVA, setCuotaIVA] = useState<number>(facturaInicial?.cuotaIVA || 0);
+  const [aplicaRecargoEquivalencia, setAplicaRecargoEquivalencia] = useState<boolean>(() => {
+    if (facturaInicial?.aplicaRecargoEquivalencia !== undefined) {
+      return Boolean(facturaInicial.aplicaRecargoEquivalencia);
+    }
+    if (facturaInicial?.cuotaRecargoEquivalencia && facturaInicial.cuotaRecargoEquivalencia > 0) {
+      return true;
+    }
+    if (facturaInicial?.tiposIVA?.toLowerCase().includes('re')) {
+      return true;
+    }
+    const p = obtenerParametrosSistema();
+    return Boolean(p.aplicaRecargoEquivalenciaDefecto);
+  });
+  const [porcentajeRE, setPorcentajeRE] = useState<number>(() => {
+    if (facturaInicial?.tipoRecargoEquivalencia) {
+      return parseFloat(facturaInicial.tipoRecargoEquivalencia.replace('%', '')) || 5.2;
+    }
+    const p = obtenerParametrosSistema();
+    const info = analizarStringTipoImpositivo(facturaInicial?.tiposIVA || p.tipoIvaPredeterminado || '21%', p.tiposImpositivos);
+    return info.porcentajeRE > 0 ? info.porcentajeRE : obtenerRecargoEquivalenciaSugerido(info.porcentaje, info.esCanario, info.esIpsi);
+  });
+  const [cuotaRecargoEquivalencia, setCuotaRecargoEquivalencia] = useState<number>(
+    facturaInicial?.cuotaRecargoEquivalencia || 0
+  );
+  const [regimenFiscal, setRegimenFiscal] = useState<string>(facturaInicial?.regimenFiscal || '');
   const [total, setTotal] = useState<number>(facturaInicial?.total || 0);
   const [estado, setEstado] = useState<'Pendiente' | 'Pagada' | 'Vencida'>(facturaInicial?.estado || 'Pendiente');
   const [fechaPago, setFechaPago] = useState<string>(facturaInicial?.fechaPago || 'Pendiente de confirmar');
@@ -122,6 +194,24 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         setBaseImponible(facturaInicial.baseImponible || 0);
         setTiposIVA(facturaInicial.tiposIVA || '21%');
         setCuotaIVA(facturaInicial.cuotaIVA || 0);
+
+        const tieneREInicial = Boolean(
+          facturaInicial.aplicaRecargoEquivalencia ||
+          (facturaInicial.cuotaRecargoEquivalencia && facturaInicial.cuotaRecargoEquivalencia > 0) ||
+          facturaInicial.tiposIVA?.toLowerCase().includes('re')
+        );
+        setAplicaRecargoEquivalencia(tieneREInicial);
+
+        const info = analizarStringTipoImpositivo(facturaInicial.tiposIVA || '21%');
+        const rePct = facturaInicial.tipoRecargoEquivalencia
+          ? parseFloat(facturaInicial.tipoRecargoEquivalencia.replace('%', ''))
+          : info.porcentajeRE > 0
+          ? info.porcentajeRE
+          : obtenerRecargoEquivalenciaSugerido(info.porcentaje, info.esCanario);
+        setPorcentajeRE(rePct);
+        setCuotaRecargoEquivalencia(facturaInicial.cuotaRecargoEquivalencia || 0);
+        setRegimenFiscal(facturaInicial.regimenFiscal || info.regimenEtiqueta);
+
         setTotal(facturaInicial.total || 0);
         setEstado(facturaInicial.estado || 'Pendiente');
         setFechaPago(facturaInicial.fechaPago || 'Pendiente de confirmar');
@@ -312,21 +402,57 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
     setSugerenciaIaActiva(true);
   };
 
-  // Recalculate IVA / Total if Base or Tax rate changes
+  // Recalculate IVA, Recargo de Equivalencia, and Total
+  const recalcularTotales = (base: number, tipoStr: string, tieneRE: boolean, rePct: number) => {
+    const res = calcularLiquidacionFactura({
+      baseImponible: base,
+      tipoString: tipoStr,
+      aplicaRecargo: tieneRE,
+      porcentajeREManual: rePct,
+      catalogo: tiposConfigurados,
+    });
+    setCuotaIVA(res.cuotaImpuesto);
+    setCuotaRecargoEquivalencia(res.cuotaRE);
+    setRegimenFiscal(res.regimenEtiqueta);
+    setTotal(res.total);
+  };
+
   const handleBaseChange = (val: number) => {
     setBaseImponible(val);
-    const numIva = parseFloat(tiposIVA.replace('%', '')) || 21;
-    const cuota = Math.round(val * (numIva / 100) * 100) / 100;
-    setCuotaIVA(cuota);
-    setTotal(Math.round((val + cuota) * 100) / 100);
+    recalcularTotales(val, tiposIVA, aplicaRecargoEquivalencia, porcentajeRE);
   };
 
   const handleTipoIvaChange = (tipo: string) => {
     setTiposIVA(tipo);
-    const numIva = parseFloat(tipo.replace('%', '')) || 0;
-    const cuota = Math.round(baseImponible * (numIva / 100) * 100) / 100;
-    setCuotaIVA(cuota);
-    setTotal(Math.round((baseImponible + cuota) * 100) / 100);
+    const info = analizarStringTipoImpositivo(tipo, tiposConfigurados);
+    const sugeridoRE =
+      info.porcentajeRE > 0
+        ? info.porcentajeRE
+        : obtenerRecargoEquivalenciaSugerido(info.porcentaje, info.esCanario, info.esIpsi);
+
+    // Si el tipo impositivo configurado marca que sugiere recargo por defecto, activarlo
+    const matched = tiposConfigurados.find(
+      (t) => t.valor === tipo || t.nombre === tipo || t.id === tipo
+    );
+
+    let nuevoTieneRE = aplicaRecargoEquivalencia;
+    if (matched?.aplicaRecargoDefecto && !aplicaRecargoEquivalencia) {
+      nuevoTieneRE = true;
+      setAplicaRecargoEquivalencia(true);
+    }
+
+    setPorcentajeRE(sugeridoRE);
+    recalcularTotales(baseImponible, tipo, nuevoTieneRE, sugeridoRE);
+  };
+
+  const handleRecargoToggle = (activo: boolean) => {
+    setAplicaRecargoEquivalencia(activo);
+    recalcularTotales(baseImponible, tiposIVA, activo, porcentajeRE);
+  };
+
+  const handlePorcentajeREChange = (nuevoPct: number) => {
+    setPorcentajeRE(nuevoPct);
+    recalcularTotales(baseImponible, tiposIVA, aplicaRecargoEquivalencia, nuevoPct);
   };
 
   // Lines management
@@ -388,9 +514,14 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         concepto: concepto.trim() || lineas?.[0]?.nombreProducto || 'Compra a proveedor',
         importe: baseImponible,
         baseImponible: baseImponible,
-        tiposIVA: tiposIVA,
+        tiposIVA: aplicaRecargoEquivalencia && !tiposIVA.includes('RE') ? `${tiposIVA} + ${porcentajeRE}% RE` : tiposIVA,
         cuotaIVA: cuotaIVA,
-        total: total || baseImponible + cuotaIVA,
+        regimenFiscal: regimenFiscal || (tiposIVA.includes('IGIC') ? 'IGIC Canario' : 'Régimen General Peninsular'),
+        tipoImpuestoNombre: tiposIVA.includes('IGIC') ? 'IGIC' : 'IVA',
+        aplicaRecargoEquivalencia: aplicaRecargoEquivalencia,
+        tipoRecargoEquivalencia: aplicaRecargoEquivalencia ? `${porcentajeRE}%` : undefined,
+        cuotaRecargoEquivalencia: aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0,
+        total: total || (baseImponible + cuotaIVA + (aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0)),
         categoriaGasto: categoriaGasto as any,
         categoriaGastoJustificacion: categoriaGastoJustificacion,
         categoriaGastoSugerida: sugerenciaIaActiva,
@@ -737,34 +868,195 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Tipo de IVA</label>
-                <select
-                  value={tiposIVA}
-                  onChange={(e) => handleTipoIvaChange(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-rose-500 font-mono"
-                >
-                  <option value="21%">21% (General)</option>
-                  <option value="10%">10% (Reducido)</option>
-                  <option value="4%">4% (Superreducido)</option>
-                  <option value="0%">0% (Exento)</option>
-                  <option value="10% y 21%">10% y 21% (Mixto)</option>
-                </select>
+            {/* Selector de Tipo Impositivo y Régimen Fiscal */}
+            <div className="space-y-3 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">Tipo Impositivo</label>
+                    <span className="text-[10px] text-sky-400 font-mono">
+                      {tiposIVA.toUpperCase().includes('IPSI')
+                        ? 'Régimen Ceuta / Melilla (IPSI)'
+                        : tiposIVA.toUpperCase().includes('IGIC')
+                        ? 'Régimen Canario (IGIC)'
+                        : tiposIVA.includes('Temp') || tiposIVA === '0%' || tiposIVA === '5%' || tiposIVA === '2%'
+                        ? 'Tipo Temporal / Especial'
+                        : 'IVA Peninsular'}
+                    </span>
+                  </div>
+                  <select
+                    value={tiposIVA}
+                    onChange={(e) => handleTipoIvaChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-rose-500 font-mono"
+                  >
+                    {/* Agrupación de Tipos Peninsulares Ordinarios */}
+                    {tiposConfigurados.some((t) => t.habilitado && t.tipoImpuesto === 'IVA' && !t.esTemporal && !t.esPersonalizado) && (
+                      <optgroup label="Régimen General Peninsular (IVA)">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && t.tipoImpuesto === 'IVA' && !t.esTemporal && !t.esPersonalizado)
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre} ({t.porcentaje}%{t.porcentajeRecargo > 0 ? ` + R.E. ${t.porcentajeRecargo}%` : ''})
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+
+                    {/* Agrupación de Tipos Temporales / Alimentos */}
+                    {tiposConfigurados.some((t) => t.habilitado && t.esTemporal) && (
+                      <optgroup label="Tipos Temporales / RDL Alimentos y Aceites">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && t.esTemporal)
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre} ({t.porcentaje}%{t.porcentajeRecargo > 0 ? ` + R.E. ${t.porcentajeRecargo}%` : ''})
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+
+                    {/* Agrupación Canario (IGIC) */}
+                    {tiposConfigurados.some((t) => t.habilitado && t.tipoImpuesto === 'IGIC') && (
+                      <optgroup label="Régimen Canario (IGIC)">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && t.tipoImpuesto === 'IGIC')
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre} ({t.porcentaje}%)
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+
+                    {/* Agrupación Ceuta y Melilla (IPSI) */}
+                    {tiposConfigurados.some((t) => t.habilitado && t.tipoImpuesto === 'IPSI') && (
+                      <optgroup label="Régimen Ceuta y Melilla (IPSI)">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && t.tipoImpuesto === 'IPSI')
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre} ({t.porcentaje}%)
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+
+                    {/* Agrupación Personalizados / Otros */}
+                    {tiposConfigurados.some((t) => t.habilitado && (t.esPersonalizado || t.tipoImpuesto === 'OTRO')) && (
+                      <optgroup label="Tipos Personalizados de Empresa">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && (t.esPersonalizado || t.tipoImpuesto === 'OTRO'))
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre} ({t.porcentaje}%)
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+
+                    {/* Agrupación Exentos */}
+                    {tiposConfigurados.some((t) => t.habilitado && (t.tipoImpuesto === 'EXENTO' || t.valor.includes('Exento'))) && (
+                      <optgroup label="Operaciones Exentas / Especiales">
+                        {tiposConfigurados
+                          .filter((t) => t.habilitado && (t.tipoImpuesto === 'EXENTO' || t.valor.includes('Exento')))
+                          .map((t) => (
+                            <option key={t.id} value={t.valor}>
+                              {t.nombre}
+                            </option>
+                          ))}
+                        <option value="10% y 21%">10% y 21% - Factura con tipos mixtos</option>
+                      </optgroup>
+                    )}
+
+                    {/* Fallback si el valor actual no está en la lista de habilitados */}
+                    {!tiposConfigurados.some((t) => t.habilitado && t.valor === tiposIVA) && (
+                      <optgroup label="Valor Actual de la Factura">
+                        <option value={tiposIVA}>{tiposIVA}</option>
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Cuota {tiposIVA.toUpperCase().includes('IPSI') ? 'IPSI' : tiposIVA.toUpperCase().includes('IGIC') ? 'IGIC' : 'IVA'} (€)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={cuotaIVA || ''}
+                    onChange={(e) => {
+                      const c = parseFloat(e.target.value) || 0;
+                      setCuotaIVA(c);
+                      const re = aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0;
+                      setTotal(Math.round((baseImponible + c + re) * 100) / 100);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sky-400 text-xs focus:outline-none focus:border-rose-500 font-mono font-medium"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Cuota IVA (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={cuotaIVA || ''}
-                  onChange={(e) => {
-                    const c = parseFloat(e.target.value) || 0;
-                    setCuotaIVA(c);
-                    setTotal(Math.round((baseImponible + c) * 100) / 100);
-                  }}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sky-400 text-xs focus:outline-none focus:border-rose-500 font-mono font-medium"
-                />
+
+              {/* Toggle de Recargo de Equivalencia (R.E.) */}
+              <div className="pt-2 border-t border-slate-800/80">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={aplicaRecargoEquivalencia}
+                    onChange={(e) => handleRecargoToggle(e.target.checked)}
+                    className="w-4 h-4 rounded text-purple-600 bg-slate-950 border-slate-700 focus:ring-purple-500 focus:ring-offset-slate-900"
+                  />
+                  <div className="flex items-center gap-1.5 text-xs text-purple-300 font-semibold">
+                    <span>Aplicar Régimen de Recargo de Equivalencia (R.E.)</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-200 font-normal">
+                      Comercio Minorista
+                    </span>
+                  </div>
+                </label>
+
+                {aplicaRecargoEquivalencia && (
+                  <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 rounded-xl bg-purple-950/20 border border-purple-800/40 animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-purple-300">Tipo R.E. (%)</label>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={porcentajeRE}
+                          onChange={(e) => handlePorcentajeREChange(parseFloat(e.target.value) || 5.2)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-purple-700/50 text-purple-200 text-xs font-mono"
+                        >
+                          <option value="5.2">5,20% (Correspondiente a IVA 21%)</option>
+                          <option value="1.4">1,40% (Correspondiente a IVA 10%)</option>
+                          <option value="0.5">0,50% (Correspondiente a IVA 4%)</option>
+                          <option value="0.62">0,62% (Correspondiente a IVA 5% temporal)</option>
+                          <option value="0.26">0,26% (Correspondiente a IVA 2% temporal)</option>
+                          <option value="0.7">0,70% (Recargo minorista IGIC 7%)</option>
+                          <option value="0.3">0,30% (Recargo minorista IGIC 3%)</option>
+                          {tiposConfigurados
+                            .filter((t) => t.porcentajeRecargo > 0 && ![5.2, 1.4, 0.5, 0.62, 0.26, 0.7, 0.3].includes(t.porcentajeRecargo))
+                            .map((t) => (
+                              <option key={t.id} value={t.porcentajeRecargo}>
+                                {t.porcentajeRecargo}% ({t.nombre})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-purple-300">Cuota R.E. (€)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={cuotaRecargoEquivalencia || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setCuotaRecargoEquivalencia(val);
+                          setTotal(Math.round((baseImponible + cuotaIVA + val) * 100) / 100);
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-purple-700/50 text-purple-300 text-xs font-mono font-medium"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
