@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Factura,
   TrimestreFiscal,
@@ -123,6 +123,29 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
     return calcularModelo349({ facturas, periodo: trimestre, anio });
   }, [facturas, trimestre, anio]);
 
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const handleResolverAhora = (itemId?: string) => {
+    setMostrarEditorIngresos(true);
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Resaltar o dar foco al input relevante
+        let targetInputId = 'input-ingresos-21';
+        if (itemId?.includes('nominas')) {
+          targetInputId = 'input-num-empleados';
+        } else if (itemId?.includes('130')) {
+          targetInputId = 'input-retenciones-ventas';
+        }
+        const el = document.getElementById(targetInputId) as HTMLInputElement | null;
+        if (el) {
+          el.focus();
+          el.select?.();
+        }
+      }
+    }, 100);
+  };
+
   // Función para renderizar la lista de particularidades y requisitos
   const renderParticularidades = (items: ParticularidadModelo[]) => (
     <div className="space-y-2.5">
@@ -169,8 +192,9 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
                 <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                   <span className="text-[10px] text-amber-400 font-medium">Acción recomendada:</span>
                   <button
-                    onClick={() => setMostrarEditorIngresos(true)}
-                    className="text-[10px] font-bold text-amber-300 hover:text-amber-200 underline flex items-center gap-1 cursor-pointer"
+                    onClick={() => handleResolverAhora(item.id)}
+                    className="text-[10px] font-bold text-amber-300 hover:text-amber-200 underline flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Abre el panel de datos complementarios para rellenar esta información"
                   >
                     Resolver ahora <ArrowRight className="w-3 h-3" />
                   </button>
@@ -284,7 +308,10 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
 
       {/* Editor Desplegable de Datos Complementarios (Ingresos de Ventas, Retenciones Previas y Nóminas) */}
       {mostrarEditorIngresos && (
-        <div className="p-5 rounded-2xl bg-[#0a1220] border border-emerald-600/40 shadow-xl space-y-4 animate-in fade-in duration-200">
+        <div
+          ref={editorRef}
+          className="p-5 rounded-2xl bg-[#0a1220] border border-emerald-600/40 shadow-xl space-y-4 animate-in fade-in duration-200 scroll-mt-6"
+        >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
@@ -319,6 +346,7 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
               <div>
                 <label className="text-[11px] text-slate-400 block mb-1">Base imponible al 21% (€)</label>
                 <input
+                  id="input-ingresos-21"
                   type="number"
                   step="0.01"
                   value={datosAdicionales[trimestre].ingresosBase21 || ''}
@@ -359,6 +387,7 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
               <div>
                 <label className="text-[11px] text-slate-400 block mb-1">Retenciones IRPF soportadas en ventas (€)</label>
                 <input
+                  id="input-retenciones-ventas"
                   type="number"
                   step="0.01"
                   value={datosAdicionales[trimestre].retencionesVentasSoportadas || ''}
@@ -390,6 +419,7 @@ export const ModelosFiscalesView: React.FC<ModelosFiscalesViewProps> = ({
               <div>
                 <label className="text-[11px] text-slate-400 block mb-1">Número de empleados con nómina</label>
                 <input
+                  id="input-num-empleados"
                   type="number"
                   step="1"
                   value={datosAdicionales[trimestre].numTrabajadoresNominas || ''}
