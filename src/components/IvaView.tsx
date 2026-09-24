@@ -17,7 +17,8 @@ import {
   Landmark,
   Wheat,
   Sparkles,
-  Percent
+  Percent,
+  ChevronRight
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,12 +43,13 @@ import { obtenerParametrosSistema } from '../utils/parametrosSistema';
 interface IvaViewProps {
   facturas: Factura[];
   onOpenConfiguracion?: (tab?: string) => void;
+  onNavigateToModelos?: () => void;
 }
 
 type PeriodoIVA = 'T1' | 'T2' | 'T3' | 'T4' | 'ANUAL';
 type FiltroRegimen = 'TODOS' | 'IVA_GENERAL' | 'IVA_TEMPORAL' | 'IGIC_CANARIAS' | 'IPSI_CEUTA_MELILLA' | 'RECARGO_EQUIVALENCIA' | 'RETENCION_IRPF';
 
-export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion }) => {
+export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion, onNavigateToModelos }) => {
   const [periodo, setPeriodo] = useState<PeriodoIVA>('ANUAL');
   const [filtroRegimen, setFiltroRegimen] = useState<FiltroRegimen>('TODOS');
   const [mostrarGuiaLegal, setMostrarGuiaLegal] = useState<boolean>(false);
@@ -174,6 +176,37 @@ export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion 
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
+      {/* Acceso directo opcional a Modelos Oficiales AEAT */}
+      {onNavigateToModelos && (
+        <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-[#121124] via-[#0d1527] to-[#0a1120] border border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
+              <Landmark className="w-5 h-5 text-rose-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-slate-100">
+                  Modelos Oficiales de la Agencia Tributaria (AEAT)
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  303 · 390 · 130 · 111 · 347 · 349
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Genera liquidaciones completas con casillas oficiales, desglose trimestral y control de particularidades pendientes.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onNavigateToModelos}
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white text-xs font-bold transition-all shadow-md shadow-rose-950/40 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <span>Abrir Modelos AEAT</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
         <div>

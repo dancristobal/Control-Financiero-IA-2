@@ -6,6 +6,7 @@ import {
   TrendingUp,
   AlertTriangle,
   Receipt,
+  Landmark,
   Sparkles,
   Settings,
   MessageSquare,
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'precios', label: 'Evolución Precios', icon: TrendingUp },
     { id: 'alertas', label: 'Alertas', icon: AlertTriangle, badge: alertasActivasCount, badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30' },
     { id: 'iva', label: 'IVA', icon: Receipt },
+    { id: 'modelos-fiscales', label: 'Modelos AEAT', icon: Landmark },
     { id: 'analisis-ia', label: 'Análisis IA', icon: Sparkles, highlight: true },
   ];
 

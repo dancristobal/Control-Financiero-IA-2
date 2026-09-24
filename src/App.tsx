@@ -6,6 +6,7 @@ import { ProveedoresView } from './components/ProveedoresView';
 import { EvolucionPreciosView } from './components/EvolucionPreciosView';
 import { AlertasView } from './components/AlertasView';
 import { IvaView } from './components/IvaView';
+import { ModelosFiscalesView } from './components/ModelosFiscalesView';
 import { AnalisisIAView } from './components/AnalisisIAView';
 import { ChatFacturasModal } from './components/ChatFacturasModal';
 import { InformePdfModal } from './components/InformePdfModal';
@@ -885,6 +886,16 @@ export default function App() {
               <IvaView
                 facturas={facturas}
                 onOpenConfiguracion={(tab) => handleOpenConfig((tab as any) || 'fiscalidad')}
+                onNavigateToModelos={() => setActiveTab('modelos-fiscales')}
+              />
+            </ErrorBoundary>
+          )}
+
+          {activeTab === 'modelos-fiscales' && (
+            <ErrorBoundary fallbackTitle="Error al cargar los Modelos Fiscales AEAT" onReset={() => setActiveTab('resumen')}>
+              <ModelosFiscalesView
+                facturas={facturas}
+                onOpenConfiguracion={() => handleOpenConfig('fiscalidad')}
               />
             </ErrorBoundary>
           )}

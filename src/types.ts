@@ -708,3 +708,176 @@ export const DEFAULT_PARAMETROS_SISTEMA: ParametrosSistema = {
   tiposRetencionIRPF: TIPOS_RETENCION_IRPF_PREDETERMINADOS,
 };
 
+// ==========================================
+// MODELOS TRIBUTARIOS OFICIALES AEAT
+// ==========================================
+
+export type TrimestreFiscal = 'T1' | 'T2' | 'T3' | 'T4';
+export type PeriodoFiscalModelo = 'T1' | 'T2' | 'T3' | 'T4' | 'ANUAL';
+
+export interface DatosAdicionalesTrimestre {
+  ingresosBase21: number;
+  ingresosBase10: number;
+  ingresosBase4: number;
+  ingresosBaseOtros: number;
+  retencionesVentasSoportadas: number;
+  pagosFraccionadosPrevios130: number;
+  baseNominasTrabajadores: number;
+  retencionesNominasTrabajadores: number;
+  numTrabajadoresNominas: number;
+}
+
+export type DatosAdicionalesFiscalesAnio = Record<TrimestreFiscal, DatosAdicionalesTrimestre>;
+
+export const DEFAULT_DATOS_TRIMESTRE: DatosAdicionalesTrimestre = {
+  ingresosBase21: 0,
+  ingresosBase10: 0,
+  ingresosBase4: 0,
+  ingresosBaseOtros: 0,
+  retencionesVentasSoportadas: 0,
+  pagosFraccionadosPrevios130: 0,
+  baseNominasTrabajadores: 0,
+  retencionesNominasTrabajadores: 0,
+  numTrabajadoresNominas: 0,
+};
+
+export interface ParticularidadModelo {
+  id: string;
+  tipo: 'completado' | 'pendiente' | 'advertencia' | 'info';
+  titulo: string;
+  descripcion: string;
+  accionRequerida?: string;
+}
+
+export interface ResultadoModelo303 {
+  periodo: TrimestreFiscal;
+  anio: number;
+  // IVA Devengado (Ingresos / Ventas)
+  baseDevengado21: number;
+  cuotaDevengado21: number;
+  baseDevengado10: number;
+  cuotaDevengado10: number;
+  baseDevengado4: number;
+  cuotaDevengado4: number;
+  totalCuotaDevengada: number; // Casilla 27
+  // IVA Deducible (Gastos / Facturas)
+  baseDeducibleCorriente: number; // Casilla 28
+  cuotaDeducibleCorriente: number; // Casilla 29
+  baseDeducibleBienesInversion: number; // Casilla 30
+  cuotaDeducibleBienesInversion: number; // Casilla 31
+  totalCuotaDeducible: number; // Casilla 45
+  // Resultado
+  diferenciaCuotas: number; // Casilla 46 = Casilla 27 - Casilla 45
+  resultadoFinal: number; // Positivo a ingresar, negativo a compensar/devolver
+  estadoResultado: 'A_INGRESAR' | 'A_COMPENSAR' | 'CERO';
+  particularidades: ParticularidadModelo[];
+  numFacturasGastos: number;
+}
+
+export interface ResultadoModelo390 {
+  anio: number;
+  totalVentasDevengado: number;
+  totalIvaRepercutido: number;
+  totalComprasDeducible: number;
+  totalIvaSoportado: number;
+  resultadoAnualLiquidacion: number;
+  desgloseTrimestral: {
+    trimestre: TrimestreFiscal;
+    ivaRepercutido: number;
+    ivaSoportado: number;
+    saldo: number;
+  }[];
+  volumenOperaciones: number; // Casilla 108
+  particularidades: ParticularidadModelo[];
+}
+
+export interface ResultadoModelo130 {
+  periodo: TrimestreFiscal;
+  anio: number;
+  ingresosComputablesAcumulados: number; // Casilla 01
+  gastosDeduciblesAcumulados: number; // Casilla 02
+  rendimientoNeto: number; // Casilla 03
+  pagoFraccionado20Pct: number; // Casilla 04 (20% del rendimiento neto si positivo)
+  retencionesSoportadasAcumuladas: number; // Casilla 05
+  pagosFraccionadosPrevios: number; // Casilla 06
+  totalAIngresar: number; // Casilla 07 / 19
+  exentoPorRetencionPrevia: boolean;
+  particularidades: ParticularidadModelo[];
+}
+
+export interface PerceptorModelo111 {
+  nif: string;
+  nombre: string;
+  subclave: 'PROFESIONAL' | 'AGRARIO' | 'TRABAJO' | 'OTRO';
+  base: number;
+  retencion: number;
+  tipoPct: number;
+  numFacturas: number;
+}
+
+export interface ResultadoModelo111 {
+  periodo: TrimestreFiscal;
+  anio: number;
+  // Rendimientos del trabajo
+  trabajoNumPerceptores: number; // Casilla 01
+  trabajoImportePercepciones: number; // Casilla 02
+  trabajoImporteRetenciones: number; // Casilla 03
+  // Rendimientos de actividades económicas
+  actividadesNumPerceptores: number; // Casilla 07
+  actividadesImportePercepciones: number; // Casilla 08
+  actividadesImporteRetenciones: number; // Casilla 09
+  // Agrícolas / Ganaderas
+  agrarioNumPerceptores: number; // Casilla 10
+  agrarioImportePercepciones: number; // Casilla 11
+  agrarioImporteRetenciones: number; // Casilla 12
+  // Total a ingresar
+  totalRetencionesAIngresar: number; // Casilla 28
+  perceptoresDetalle: PerceptorModelo111[];
+  particularidades: ParticularidadModelo[];
+}
+
+export interface DeclaradoModelo347 {
+  nif: string;
+  nombre: string;
+  tipoOperacion: 'COMPRAS' | 'VENTAS';
+  totalAnual: number;
+  t1: number;
+  t2: number;
+  t3: number;
+  t4: number;
+  tieneCifValido: boolean;
+  numFacturas: number;
+}
+
+export interface ResultadoModelo347 {
+  anio: number;
+  umbralMinimo: number; // 3.005,06 €
+  declarados: DeclaradoModelo347[];
+  totalVolumenDeclarado: number;
+  numDeclarados: number;
+  tercerosEnRevisionCif: number;
+  particularidades: ParticularidadModelo[];
+}
+
+export interface OperacionModelo349 {
+  nifIvaUE: string;
+  nombre: string;
+  paisCodigo: string;
+  claveOperacion: 'A' | 'I' | 'E' | 'S'; // A = Adquisición bienes, I = Adquisición servicios
+  baseImponible: number;
+  numFacturas: number;
+  viesValido?: boolean;
+}
+
+export interface ResultadoModelo349 {
+  periodo: PeriodoFiscalModelo;
+  anio: number;
+  operaciones: OperacionModelo349[];
+  totalAdquisicionesServiciosI: number;
+  totalAdquisicionesBienesA: number;
+  totalOperacionesIntracomunitarias: number;
+  numOperadoresUE: number;
+  particularidades: ParticularidadModelo[];
+}
+
+
