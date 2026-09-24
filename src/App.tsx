@@ -32,6 +32,7 @@ import {
   FileSpreadsheet,
   Sun,
   Moon,
+  Menu,
 } from 'lucide-react';
 import { generarProveedoresDesdeFacturas, generarAlertasDesdeFacturas } from './utils/sheetDataSync';
 import { obtenerConfiguracionAlertas } from './utils/alertasConfig';
@@ -164,6 +165,7 @@ export default function App() {
   >('negocio');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPdfReportOpen, setIsPdfReportOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleOpenConfig = (
     tab?: 'negocio' | 'categorias' | 'fiscalidad' | 'parametros' | 'sheets' | 'gemini' | 'script' | 'apariencia'
@@ -683,6 +685,8 @@ export default function App() {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         datosNegocio={datosNegocio}
+        isOpenMobile={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -690,6 +694,15 @@ export default function App() {
         {/* Top Header Bar */}
         <header className="h-16 px-4 sm:px-6 lg:px-8 border-b border-slate-800/80 bg-[#0a0f18]/90 backdrop-blur-md flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
+            {/* Hamburger Button for Mobile / Small Screens */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 -ml-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer"
+              aria-label="Abrir menú de navegación"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline max-w-[200px] truncate" title={datosNegocio.nombre}>
               {datosNegocio.nombre}
             </span>
