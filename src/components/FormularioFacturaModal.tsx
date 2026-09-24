@@ -30,6 +30,9 @@ import {
   ParametrosSistema,
   TipoImpositivoConfigurable,
   TIPOS_IMPOSITIVOS_PREDETERMINADOS,
+  TipoRetencionIRPFConfigurable,
+  ConceptoRetencionIRPF,
+  TIPOS_RETENCION_IRPF_PREDETERMINADOS,
 } from '../types';
 import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
 import { CategoriasGastoModal } from './CategoriasGastoModal';
@@ -38,7 +41,8 @@ import {
   CATALOGO_TIPOS_IMPOSITIVOS,
   calcularLiquidacionFactura,
   analizarStringTipoImpositivo,
-  obtenerRecargoEquivalenciaSugerido
+  obtenerRecargoEquivalenciaSugerido,
+  extraerPorcentajeIRPF,
 } from '../utils/fiscalidad';
 
 interface FormularioFacturaModalProps {
@@ -122,6 +126,14 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
       ? p.tiposImpositivos
       : TIPOS_IMPOSITIVOS_PREDETERMINADOS;
   });
+  const [tiposRetencionIRPFConfigurados, setTiposRetencionIRPFConfigurados] = useState<
+    TipoRetencionIRPFConfigurable[]
+  >(() => {
+    const p = obtenerParametrosSistema();
+    return Array.isArray(p.tiposRetencionIRPF) && p.tiposRetencionIRPF.length > 0
+      ? p.tiposRetencionIRPF
+      : TIPOS_RETENCION_IRPF_PREDETERMINADOS;
+  });
 
   useEffect(() => {
     const handleParamsUpdated = () => {
@@ -129,6 +141,9 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
       setParametros(p);
       if (Array.isArray(p.tiposImpositivos) && p.tiposImpositivos.length > 0) {
         setTiposConfigurados(p.tiposImpositivos);
+      }
+      if (Array.isArray(p.tiposRetencionIRPF) && p.tiposRetencionIRPF.length > 0) {
+        setTiposRetencionIRPFConfigurados(p.tiposRetencionIRPF);
       }
     };
     window.addEventListener('parametrosSistemaActualizados', handleParamsUpdated);
@@ -170,6 +185,41 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
   const [cuotaRecargoEquivalencia, setCuotaRecargoEquivalencia] = useState<number>(
     facturaInicial?.cuotaRecargoEquivalencia || 0
   );
+
+  // Estados de Retención de IRPF (Profesionales, Alquileres, Autónomos)
+  const [aplicaRetencionIRPF, setAplicaRetencionIRPF] = useState<boolean>(() => {
+    if (facturaInicial?.aplicaRetencionIRPF !== undefined) {
+      return Boolean(facturaInicial.aplicaRetencionIRPF);
+    }
+    if (facturaInicial?.cuotaIRPF && facturaInicial.cuotaIRPF > 0) {
+      return true;
+    }
+    return false;
+  });
+  const [porcentajeIRPF, setPorcentajeIRPF] = useState<number>(() => {
+    if (facturaInicial?.porcentajeIRPF !== undefined && !isNaN(facturaInicial.porcentajeIRPF)) {
+      return facturaInicial.porcentajeIRPF;
+    }
+    if (facturaInicial?.tipoRetencionIRPF) {
+      return extraerPorcentajeIRPF(facturaInicial.tipoRetencionIRPF);
+    }
+    const p = obtenerParametrosSistema();
+    return p.porcentajeIrpfPredeterminado || 15;
+  });
+  const [tipoRetencionIRPF, setTipoRetencionIRPF] = useState<string>(() => {
+    if (facturaInicial?.tipoRetencionIRPF) return facturaInicial.tipoRetencionIRPF;
+    return '15%';
+  });
+  const [conceptoRetencionIRPF, setConceptoRetencionIRPF] = useState<ConceptoRetencionIRPF>(() => {
+    if (facturaInicial?.conceptoRetencionIRPF) return facturaInicial.conceptoRetencionIRPF;
+    const p = obtenerParametrosSistema();
+    return p.conceptoIrpfPredeterminado || 'PROFESIONAL';
+  });
+  const [cuotaIRPF, setCuotaIRPF] = useState<number>(() => {
+    if (facturaInicial?.cuotaIRPF !== undefined) return facturaInicial.cuotaIRPF;
+    return 0;
+  });
+
   const [regimenFiscal, setRegimenFiscal] = useState<string>(facturaInicial?.regimenFiscal || '');
   const [total, setTotal] = useState<number>(facturaInicial?.total || 0);
   const [estado, setEstado] = useState<'Pendiente' | 'Pagada' | 'Vencida'>(facturaInicial?.estado || 'Pendiente');
@@ -211,6 +261,22 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         setPorcentajeRE(rePct);
         setCuotaRecargoEquivalencia(facturaInicial.cuotaRecargoEquivalencia || 0);
         setRegimenFiscal(facturaInicial.regimenFiscal || info.regimenEtiqueta);
+
+        // Inicializar Retención IRPF
+        const tieneIRPFInicial = Boolean(
+          facturaInicial.aplicaRetencionIRPF ||
+          (facturaInicial.cuotaIRPF && facturaInicial.cuotaIRPF > 0)
+        );
+        setAplicaRetencionIRPF(tieneIRPFInicial);
+        const irpfPct = facturaInicial.porcentajeIRPF !== undefined
+          ? facturaInicial.porcentajeIRPF
+          : facturaInicial.tipoRetencionIRPF
+          ? extraerPorcentajeIRPF(facturaInicial.tipoRetencionIRPF)
+          : 15;
+        setPorcentajeIRPF(irpfPct);
+        setTipoRetencionIRPF(facturaInicial.tipoRetencionIRPF || `${irpfPct}%`);
+        setConceptoRetencionIRPF(facturaInicial.conceptoRetencionIRPF || (irpfPct === 19 ? 'ARRENDAMIENTO' : 'PROFESIONAL'));
+        setCuotaIRPF(facturaInicial.cuotaIRPF || 0);
 
         setTotal(facturaInicial.total || 0);
         setEstado(facturaInicial.estado || 'Pendiente');
@@ -369,6 +435,16 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
       if (f.notas) setNotas(f.notas);
       if (f.lineas && Array.isArray(f.lineas)) setLineas(f.lineas);
 
+      // Autocompletar datos de Retención de IRPF si Gemini los ha detectado
+      if (f.aplicaRetencionIRPF !== undefined || (f.cuotaIRPF && f.cuotaIRPF > 0)) {
+        const tieneRetencion = Boolean(f.aplicaRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0));
+        setAplicaRetencionIRPF(tieneRetencion);
+        if (f.porcentajeIRPF) setPorcentajeIRPF(f.porcentajeIRPF);
+        if (f.tipoRetencionIRPF) setTipoRetencionIRPF(f.tipoRetencionIRPF);
+        if (f.cuotaIRPF) setCuotaIRPF(f.cuotaIRPF);
+        if (f.conceptoRetencionIRPF) setConceptoRetencionIRPF(f.conceptoRetencionIRPF as any);
+      }
+
       // AUTOCOMPLETE PROPOSED EXPENSE CATEGORY
       const categoriaPropuesta = f.categoriaGasto || 'Insumos';
       setCategoriaGasto(categoriaPropuesta);
@@ -402,24 +478,37 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
     setSugerenciaIaActiva(true);
   };
 
-  // Recalculate IVA, Recargo de Equivalencia, and Total
-  const recalcularTotales = (base: number, tipoStr: string, tieneRE: boolean, rePct: number) => {
+  // Recalculate IVA, Recargo de Equivalencia, Retención IRPF, and Total
+  const recalcularTotales = (
+    base: number,
+    tipoStr: string,
+    tieneRE: boolean,
+    rePct: number,
+    tieneIRPF: boolean = aplicaRetencionIRPF,
+    irpfPct: number = porcentajeIRPF,
+    irpfConcepto: ConceptoRetencionIRPF = conceptoRetencionIRPF
+  ) => {
     const res = calcularLiquidacionFactura({
       baseImponible: base,
       tipoString: tipoStr,
       aplicaRecargo: tieneRE,
       porcentajeREManual: rePct,
       catalogo: tiposConfigurados,
+      aplicaIRPF: tieneIRPF,
+      porcentajeIRPFManual: irpfPct,
+      conceptoIRPF: irpfConcepto,
+      catalogoIRPF: tiposRetencionIRPFConfigurados,
     });
     setCuotaIVA(res.cuotaImpuesto);
     setCuotaRecargoEquivalencia(res.cuotaRE);
+    setCuotaIRPF(res.cuotaIRPF);
     setRegimenFiscal(res.regimenEtiqueta);
     setTotal(res.total);
   };
 
   const handleBaseChange = (val: number) => {
     setBaseImponible(val);
-    recalcularTotales(val, tiposIVA, aplicaRecargoEquivalencia, porcentajeRE);
+    recalcularTotales(val, tiposIVA, aplicaRecargoEquivalencia, porcentajeRE, aplicaRetencionIRPF, porcentajeIRPF, conceptoRetencionIRPF);
   };
 
   const handleTipoIvaChange = (tipo: string) => {
@@ -442,17 +531,54 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
     }
 
     setPorcentajeRE(sugeridoRE);
-    recalcularTotales(baseImponible, tipo, nuevoTieneRE, sugeridoRE);
+    recalcularTotales(baseImponible, tipo, nuevoTieneRE, sugeridoRE, aplicaRetencionIRPF, porcentajeIRPF, conceptoRetencionIRPF);
   };
 
   const handleRecargoToggle = (activo: boolean) => {
     setAplicaRecargoEquivalencia(activo);
-    recalcularTotales(baseImponible, tiposIVA, activo, porcentajeRE);
+    recalcularTotales(baseImponible, tiposIVA, activo, porcentajeRE, aplicaRetencionIRPF, porcentajeIRPF, conceptoRetencionIRPF);
   };
 
   const handlePorcentajeREChange = (nuevoPct: number) => {
     setPorcentajeRE(nuevoPct);
-    recalcularTotales(baseImponible, tiposIVA, aplicaRecargoEquivalencia, nuevoPct);
+    recalcularTotales(baseImponible, tiposIVA, aplicaRecargoEquivalencia, nuevoPct, aplicaRetencionIRPF, porcentajeIRPF, conceptoRetencionIRPF);
+  };
+
+  // Handlers para Retención de IRPF
+  const handleRetencionIrpfToggle = (activo: boolean) => {
+    setAplicaRetencionIRPF(activo);
+    recalcularTotales(baseImponible, tiposIVA, aplicaRecargoEquivalencia, porcentajeRE, activo, porcentajeIRPF, conceptoRetencionIRPF);
+  };
+
+  const handlePorcentajeIrpfChange = (
+    nuevoPct: number,
+    concepto?: ConceptoRetencionIRPF,
+    etiqueta?: string
+  ) => {
+    setPorcentajeIRPF(nuevoPct);
+    if (concepto) setConceptoRetencionIRPF(concepto);
+    if (etiqueta) setTipoRetencionIRPF(etiqueta);
+    else setTipoRetencionIRPF(`${nuevoPct}%`);
+    recalcularTotales(
+      baseImponible,
+      tiposIVA,
+      aplicaRecargoEquivalencia,
+      porcentajeRE,
+      aplicaRetencionIRPF,
+      nuevoPct,
+      concepto || conceptoRetencionIRPF
+    );
+  };
+
+  const handleConceptoIrpfChange = (concepto: ConceptoRetencionIRPF) => {
+    setConceptoRetencionIRPF(concepto);
+  };
+
+  const handleCuotaIrpfManual = (val: number) => {
+    setCuotaIRPF(val);
+    const re = aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0;
+    const bruto = baseImponible + cuotaIVA + re;
+    setTotal(Math.max(0, Math.round((bruto - val) * 100) / 100));
   };
 
   // Lines management
@@ -521,7 +647,13 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
         aplicaRecargoEquivalencia: aplicaRecargoEquivalencia,
         tipoRecargoEquivalencia: aplicaRecargoEquivalencia ? `${porcentajeRE}%` : undefined,
         cuotaRecargoEquivalencia: aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0,
-        total: total || (baseImponible + cuotaIVA + (aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0)),
+        // Retención de IRPF
+        aplicaRetencionIRPF: aplicaRetencionIRPF,
+        tipoRetencionIRPF: aplicaRetencionIRPF ? tipoRetencionIRPF : undefined,
+        porcentajeIRPF: aplicaRetencionIRPF ? porcentajeIRPF : undefined,
+        cuotaIRPF: aplicaRetencionIRPF ? cuotaIRPF : 0,
+        conceptoRetencionIRPF: aplicaRetencionIRPF ? conceptoRetencionIRPF : undefined,
+        total: total || (baseImponible + cuotaIVA + (aplicaRecargoEquivalencia ? cuotaRecargoEquivalencia : 0) - (aplicaRetencionIRPF ? cuotaIRPF : 0)),
         categoriaGasto: categoriaGasto as any,
         categoriaGastoJustificacion: categoriaGastoJustificacion,
         categoriaGastoSugerida: sugerenciaIaActiva,
@@ -1050,7 +1182,8 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0;
                           setCuotaRecargoEquivalencia(val);
-                          setTotal(Math.round((baseImponible + cuotaIVA + val) * 100) / 100);
+                          const irpfDeducir = aplicaRetencionIRPF ? cuotaIRPF : 0;
+                          setTotal(Math.max(0, Math.round((baseImponible + cuotaIVA + val - irpfDeducir) * 100) / 100));
                         }}
                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-purple-700/50 text-purple-300 text-xs font-mono font-medium"
                       />
@@ -1058,11 +1191,192 @@ export const FormularioFacturaModal: React.FC<FormularioFacturaModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Toggle de Retención de IRPF (Autónomos / Profesionales / Arrendamiento) */}
+              <div className="pt-2.5 border-t border-slate-800/80">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={aplicaRetencionIRPF}
+                    onChange={(e) => handleRetencionIrpfToggle(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 bg-slate-950 border-slate-700 focus:ring-emerald-500 focus:ring-offset-slate-900"
+                  />
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-semibold">
+                    <span>Aplicar Retención de IRPF a Cuenta</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-200 font-normal">
+                      Autónomos / Profesionales / Alquiler
+                    </span>
+                  </div>
+                </label>
+
+                {aplicaRetencionIRPF && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 space-y-3 animate-in fade-in duration-150">
+                    {/* Botones de Selección Rápida de Tipo de Retención */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-emerald-300">
+                          Selección rápida de retención:
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                          -{porcentajeIRPF}% IRPF (-{cuotaIRPF.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handlePorcentajeIrpfChange(15, 'PROFESIONAL', '15% Profesional')}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all border cursor-pointer ${
+                            porcentajeIRPF === 15 && conceptoRetencionIRPF === 'PROFESIONAL'
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-emerald-700/60 hover:text-emerald-200'
+                          }`}
+                        >
+                          <div className="font-bold">15% Profesional</div>
+                          <div className="text-[9px] opacity-80">Mod. 111 General</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePorcentajeIrpfChange(7, 'PROFESIONAL', '7% Nuevos Autónomos')}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all border cursor-pointer ${
+                            porcentajeIRPF === 7
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-emerald-700/60 hover:text-emerald-200'
+                          }`}
+                        >
+                          <div className="font-bold">7% Nuevo Autónomo</div>
+                          <div className="text-[9px] opacity-80">Mod. 111 Reducido</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePorcentajeIrpfChange(19, 'ARRENDAMIENTO', '19% Arrendamiento')}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all border cursor-pointer ${
+                            porcentajeIRPF === 19 && conceptoRetencionIRPF === 'ARRENDAMIENTO'
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-emerald-700/60 hover:text-emerald-200'
+                          }`}
+                        >
+                          <div className="font-bold">19% Alquiler</div>
+                          <div className="text-[9px] opacity-80">Mod. 115 Inmuebles</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePorcentajeIrpfChange(2, 'AGRARIO', '2% Agrario')}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all border cursor-pointer ${
+                            porcentajeIRPF === 2
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-emerald-700/60 hover:text-emerald-200'
+                          }`}
+                        >
+                          <div className="font-bold">2% Agrario / Gan.</div>
+                          <div className="text-[9px] opacity-80">Mod. 111 Sectorial</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Controles de Porcentaje, Concepto y Cuota retenida */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-emerald-300">
+                          % Retención IRPF
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="50"
+                            value={porcentajeIRPF}
+                            onChange={(e) => handlePorcentajeIrpfChange(parseFloat(e.target.value) || 0)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-700/50 text-emerald-200 text-xs font-mono font-bold"
+                          />
+                          <span className="text-xs text-emerald-400 font-mono">%</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-emerald-300">
+                          Concepto y Modelo AEAT
+                        </label>
+                        <select
+                          value={conceptoRetencionIRPF}
+                          onChange={(e) => handleConceptoIrpfChange(e.target.value as ConceptoRetencionIRPF)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-700/50 text-emerald-200 text-xs font-sans"
+                        >
+                          <option value="PROFESIONAL">Actividad Profesional (Mod. 111)</option>
+                          <option value="ARRENDAMIENTO">Alquiler / Inmueble Urbano (Mod. 115)</option>
+                          <option value="AGRARIO">Actividad Agrícola / Ganadera (Mod. 111)</option>
+                          <option value="CAPITAL_MOBILIARIO">Capital Mobiliario / Licencias (Mod. 123)</option>
+                          <option value="OTRO">Otros Rendimientos / Especial</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-emerald-300">
+                          Cuota Retenida (€ a restar)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={cuotaIRPF || ''}
+                          onChange={(e) => handleCuotaIrpfManual(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-700/50 text-emerald-300 text-xs font-mono font-bold"
+                          title="Importe deducido del total a pagar e ingresado a la Agencia Tributaria"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-emerald-400/80 bg-emerald-950/40 p-2 rounded-lg border border-emerald-800/30 flex items-center justify-between">
+                      <span>💡 Esta retención minorará el total a pagar al proveedor y se liquidará ante Hacienda.</span>
+                      <span className="font-mono font-bold text-emerald-300">
+                        Base ({baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €) × {porcentajeIRPF}% = {cuotaIRPF.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Total Factura */}
+            {/* Resumen Financiero de la Liquidación (Base + IVA/IGIC + RE - IRPF = Total Líquido) */}
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5 font-mono">
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Base Imponible:</span>
+                <span>{baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+              </div>
+              <div className="flex items-center justify-between text-sky-400">
+                <span>(+) Cuota {tiposIVA.toUpperCase().includes('IPSI') ? 'IPSI' : tiposIVA.toUpperCase().includes('IGIC') ? 'IGIC' : 'IVA'} ({tiposIVA}):</span>
+                <span>+{cuotaIVA.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+              </div>
+              {aplicaRecargoEquivalencia && cuotaRecargoEquivalencia > 0 && (
+                <div className="flex items-center justify-between text-purple-400">
+                  <span>(+) Recargo de Equivalencia ({porcentajeRE}%):</span>
+                  <span>+{cuotaRecargoEquivalencia.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+                </div>
+              )}
+              {aplicaRetencionIRPF && cuotaIRPF > 0 && (
+                <div className="flex items-center justify-between text-emerald-400 font-semibold bg-emerald-950/20 px-1.5 py-0.5 rounded">
+                  <span>(-) Retención IRPF ({porcentajeIRPF}% - {conceptoRetencionIRPF === 'ARRENDAMIENTO' ? 'Mod. 115' : 'Mod. 111'}):</span>
+                  <span>-{cuotaIRPF.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+                </div>
+              )}
+              <div className="border-t border-slate-800 pt-1.5 flex items-center justify-between font-bold text-sm">
+                <span className="text-slate-200">TOTAL LÍQUIDO A PAGAR:</span>
+                <span className="text-rose-400">{total.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+              </div>
+            </div>
+
+            {/* Total Factura Editable */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-200">TOTAL FACTURA (€) *</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200">TOTAL LÍQUIDO FACTURA (€) *</label>
+                {aplicaRetencionIRPF && (
+                  <span className="text-[10px] text-emerald-400 font-medium">
+                    (Importe neto resultante tras descontar la retención de IRPF)
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
                 step="0.01"

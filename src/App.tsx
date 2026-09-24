@@ -10,6 +10,7 @@ import { AnalisisIAView } from './components/AnalisisIAView';
 import { ChatFacturasModal } from './components/ChatFacturasModal';
 import { InformePdfModal } from './components/InformePdfModal';
 import { ConfiguracionModal } from './components/ConfiguracionModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   INITIAL_FACTURAS,
   INITIAL_PROVEEDORES,
@@ -880,10 +881,12 @@ export default function App() {
           )}
 
           {activeTab === 'iva' && (
-            <IvaView
-              facturas={facturas}
-              onOpenConfiguracion={(tab) => handleOpenConfig((tab as any) || 'fiscalidad')}
-            />
+            <ErrorBoundary fallbackTitle="Error al cargar el panel de IVA y Fiscalidad" onReset={() => setActiveTab('resumen')}>
+              <IvaView
+                facturas={facturas}
+                onOpenConfiguracion={(tab) => handleOpenConfig((tab as any) || 'fiscalidad')}
+              />
+            </ErrorBoundary>
           )}
 
           {activeTab === 'analisis-ia' && (

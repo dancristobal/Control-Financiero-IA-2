@@ -124,6 +124,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
   const [filtroProveedor, setFiltroProveedor] = useState('TODOS');
   const [filtroCategoria, setFiltroCategoria] = useState('TODAS');
   const [filtroEstado, setFiltroEstado] = useState('TODOS');
+  const [filtroIRPF, setFiltroIRPF] = useState<'TODOS' | 'CON_IRPF' | 'SIN_IRPF'>('TODOS');
   const [minImporte, setMinImporte] = useState('');
   const [maxImporte, setMaxImporte] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
@@ -618,6 +619,13 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
       if (filtroEstado !== 'TODOS' && f.estado !== filtroEstado) {
         return false;
       }
+      // IRPF Withholding filter
+      if (filtroIRPF === 'CON_IRPF' && !(f.aplicaRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0))) {
+        return false;
+      }
+      if (filtroIRPF === 'SIN_IRPF' && (f.aplicaRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0))) {
+        return false;
+      }
       // Rango económico
       if (minImporte && f.total < parseFloat(minImporte)) {
         return false;
@@ -641,7 +649,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
 
       return true;
     });
-  }, [facturas, busqueda, filtroProveedor, filtroCategoria, filtroEstado, minImporte, maxImporte, fechaDesde, fechaHasta]);
+  }, [facturas, busqueda, filtroProveedor, filtroCategoria, filtroEstado, filtroIRPF, minImporte, maxImporte, fechaDesde, fechaHasta]);
 
   // Pagination Calculations
   const totalElementos = facturasFiltradas.length;
@@ -672,7 +680,10 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
       'Base Imponible (€)',
       'Tipos IVA (%)',
       'Cuota IVA (€)',
-      'Total (€)',
+      'Retención IRPF (%)',
+      'Cuota Retenida IRPF (€)',
+      'Concepto Retención IRPF',
+      'Total Líquido (€)',
       'Categoría Gasto',
       'Método de Pago',
       'Estado',
@@ -692,18 +703,21 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
       escapeCSV(f.fechaEmision),
       escapeCSV(f.idProveedor),
       escapeCSV(f.nombreProveedor),
-      escapeCSV(f.cifProveedor || ''),
+      escapeCSV((f as any).cifProveedor || (f as any).cif || ''),
       escapeCSV(f.concepto),
       escapeCSV(Number(f.baseImponible || 0).toFixed(2).replace('.', ',')),
       escapeCSV(f.tiposIVA || '21%'),
       escapeCSV(Number(f.cuotaIVA || 0).toFixed(2).replace('.', ',')),
+      escapeCSV(f.aplicaRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0) ? `${f.porcentajeIRPF || 15}%` : '0%'),
+      escapeCSV(Number(f.cuotaIRPF || 0).toFixed(2).replace('.', ',')),
+      escapeCSV(f.conceptoRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0 ? 'PROFESIONAL' : '')),
       escapeCSV(Number(f.total || 0).toFixed(2).replace('.', ',')),
       escapeCSV(f.categoriaGasto),
-      escapeCSV(f.metodoPago || ''),
+      escapeCSV((f as any).metodoPago || ''),
       escapeCSV(f.estado),
       escapeCSV(f.driveFileUrl || ''),
       escapeCSV(f.driveFolderName || ''),
-      escapeCSV(f.notas || f.observaciones || '')
+      escapeCSV((f as any).notas || (f as any).observaciones || '')
     ].join(';'));
 
     // UTF-8 BOM (\uFEFF) para compatibilidad nativa inmediata con Excel / Numbers / Calc en español
@@ -947,7 +961,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 disabled={isProcessing || esperandoCount === 0}
-                onClick={procesarColaArchivos}
+                onClick={() => { procesarColaArchivos(); }}
                 className={`px-4 py-2 rounded-xl text-xs font-bold tracking-wide flex items-center gap-2 transition-all ${
                   esperandoCount > 0 && !isProcessing
                     ? 'bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white shadow-md shadow-rose-950/40'
@@ -1268,7 +1282,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
               <span>Exportar CSV ({facturasFiltradas.length})</span>
             </button>
 
-            {(busqueda || filtroProveedor !== 'TODOS' || filtroCategoria !== 'TODAS' || filtroEstado !== 'TODOS' || minImporte || maxImporte || fechaDesde || fechaHasta) && (
+            {(busqueda || filtroProveedor !== 'TODOS' || filtroCategoria !== 'TODAS' || filtroEstado !== 'TODOS' || filtroIRPF !== 'TODOS' || minImporte || maxImporte || fechaDesde || fechaHasta) && (
               <button
                 id="btn-limpiar-todos-filtros"
                 onClick={() => {
@@ -1276,6 +1290,7 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                   setFiltroProveedor('TODOS');
                   setFiltroCategoria('TODAS');
                   setFiltroEstado('TODOS');
+                  setFiltroIRPF('TODOS');
                   setMinImporte('');
                   setMaxImporte('');
                   setFechaDesde('');
@@ -1508,6 +1523,18 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
             <option value="Vencida">Vencida</option>
           </select>
 
+          {/* IRPF Withholding Filter */}
+          <select
+            value={filtroIRPF}
+            onChange={(e) => setFiltroIRPF(e.target.value as any)}
+            className="bg-[#0a0f18] border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+            title="Filtrar por facturas con o sin retención de IRPF (Modelos 111 / 115)"
+          >
+            <option value="TODOS">Todos los regímenes IRPF</option>
+            <option value="CON_IRPF">Con Retención IRPF (Mod. 111/115)</option>
+            <option value="SIN_IRPF">Sin Retención IRPF</option>
+          </select>
+
           {/* Economic Range Min - Max */}
           <div className="flex items-center gap-1.5">
             <input
@@ -1537,8 +1564,8 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                 <th className="p-3.5">Proveedor</th>
                 <th className="p-3.5">Concepto</th>
                 <th className="p-3.5 text-right">Base Imp.</th>
-                <th className="p-3.5 text-right">IVA</th>
-                <th className="p-3.5 text-right">Total</th>
+                <th className="p-3.5 text-right">Impuestos / IRPF</th>
+                <th className="p-3.5 text-right">Total Líquido</th>
                 <th className="p-3.5">Categoría</th>
                 <th className="p-3.5">Google Drive</th>
                 <th className="p-3.5 text-center">Estado</th>
@@ -1578,12 +1605,26 @@ export const FacturasView: React.FC<FacturasViewProps> = ({
                     <td className="p-3.5 text-right text-slate-300 font-mono">
                       {fac.baseImponible.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                     </td>
-                    <td className="p-3.5 text-right text-sky-400 font-mono whitespace-nowrap">
-                      +{fac.cuotaIVA.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                      <span className="text-[10px] text-slate-300 ml-1">({fac.tiposIVA})</span>
+                    <td className="p-3.5 text-right font-mono whitespace-nowrap">
+                      <div className="text-sky-400">
+                        +{fac.cuotaIVA.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        <span className="text-[10px] text-slate-300 ml-1">({fac.tiposIVA})</span>
+                      </div>
+                      {(fac.aplicaRetencionIRPF || (fac.cuotaIRPF && fac.cuotaIRPF > 0)) && (
+                        <div className="text-[10px] text-emerald-400 font-medium mt-0.5">
+                          -{fac.cuotaIRPF?.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € ({fac.porcentajeIRPF || 15}% IRPF)
+                        </div>
+                      )}
                     </td>
-                    <td className="p-3.5 text-right font-bold text-rose-400 font-mono whitespace-nowrap">
-                      {fac.total.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    <td className="p-3.5 text-right font-mono whitespace-nowrap">
+                      <div className="font-bold text-rose-400">
+                        {fac.total.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </div>
+                      {(fac.aplicaRetencionIRPF || (fac.cuotaIRPF && fac.cuotaIRPF > 0)) && (
+                        <div className="text-[9px] text-emerald-400 font-normal">
+                          Líquido tras IRPF
+                        </div>
+                      )}
                     </td>
                     <td className="p-3.5 text-slate-300 whitespace-nowrap">
                       {(() => {

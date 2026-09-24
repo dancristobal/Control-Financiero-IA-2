@@ -3,6 +3,10 @@ import {
   RegimenFiscalEmpresa,
   TipoImpuestoJurisdiccion,
   TIPOS_IMPOSITIVOS_PREDETERMINADOS,
+  TipoRetencionIRPFConfigurable,
+  ConceptoRetencionIRPF,
+  TIPOS_RETENCION_IRPF_PREDETERMINADOS,
+  Factura,
 } from '../types';
 
 export type RegimenFiscalTipo =
@@ -533,8 +537,35 @@ export function analizarStringTipoImpositivo(
 }
 
 /**
+ * Extrae el porcentaje numérico de una retención de IRPF desde una cadena o catálogo
+ */
+export function extraerPorcentajeIRPF(
+  tipoStr?: string,
+  catalogo?: TipoRetencionIRPFConfigurable[]
+): number {
+  if (!tipoStr) return 15;
+  const cats = catalogo && catalogo.length > 0 ? catalogo : TIPOS_RETENCION_IRPF_PREDETERMINADOS;
+  const matchCat = cats.find(
+    (c) =>
+      c.id === tipoStr ||
+      c.codigo.toLowerCase() === tipoStr.toLowerCase() ||
+      c.valor === tipoStr ||
+      c.nombre.toLowerCase().includes(tipoStr.toLowerCase())
+  );
+  if (matchCat) return matchCat.porcentaje;
+
+  const matchNum = tipoStr.match(/(\d+(?:[.,]\d+)?)\s*%/);
+  if (matchNum) {
+    return parseFloat(matchNum[1].replace(',', '.'));
+  }
+  const soloNum = parseFloat(tipoStr.replace(',', '.'));
+  if (!isNaN(soloNum)) return soloNum;
+  return 15;
+}
+
+/**
  * Realiza el cálculo financiero completo de una factura
- * teniendo en cuenta Base, Tipo Impositivo y Recargo de Equivalencia.
+ * teniendo en cuenta Base, Tipo Impositivo, Recargo de Equivalencia y Retención de IRPF.
  */
 export function calcularLiquidacionFactura(params: {
   baseImponible: number;
@@ -542,6 +573,12 @@ export function calcularLiquidacionFactura(params: {
   aplicaRecargo?: boolean;
   porcentajeREManual?: number;
   catalogo?: TipoImpositivoConfigurable[];
+  // Soporte de Retención de IRPF
+  aplicaIRPF?: boolean;
+  porcentajeIRPFManual?: number;
+  tipoRetencionIRPFString?: string;
+  conceptoIRPF?: ConceptoRetencionIRPF;
+  catalogoIRPF?: TipoRetencionIRPFConfigurable[];
 }): {
   baseImponible: number;
   porcentajeImpuesto: number;
@@ -549,7 +586,12 @@ export function calcularLiquidacionFactura(params: {
   aplicaRecargo: boolean;
   porcentajeRE: number;
   cuotaRE: number;
+  aplicaIRPF: boolean;
+  porcentajeIRPF: number;
+  cuotaIRPF: number;
+  conceptoIRPF?: ConceptoRetencionIRPF;
   total: number;
+  totalBruto: number;
   tipoFormateado: string;
   regimenEtiqueta: string;
 } {
@@ -574,7 +616,25 @@ export function calcularLiquidacionFactura(params: {
     cuotaRE = Math.round(base * (porcentajeRE / 100) * 100) / 100;
   }
 
-  const total = Math.round((base + cuotaImpuesto + cuotaRE) * 100) / 100;
+  // Retención de IRPF (descuenta del total líquido a pagar al proveedor)
+  const aplicaIRPF = Boolean(params.aplicaIRPF);
+  let porcentajeIRPF = 0;
+  let cuotaIRPF = 0;
+
+  if (aplicaIRPF) {
+    if (params.porcentajeIRPFManual !== undefined && !isNaN(params.porcentajeIRPFManual)) {
+      porcentajeIRPF = Math.max(0, params.porcentajeIRPFManual);
+    } else if (params.tipoRetencionIRPFString) {
+      porcentajeIRPF = extraerPorcentajeIRPF(params.tipoRetencionIRPFString, params.catalogoIRPF);
+    } else {
+      porcentajeIRPF = 15;
+    }
+    cuotaIRPF = Math.round(base * (porcentajeIRPF / 100) * 100) / 100;
+  }
+
+  const totalBruto = Math.round((base + cuotaImpuesto + cuotaRE) * 100) / 100;
+  // Líquido a pagar al proveedor = Base + Impuestos Indirectos + RE - Retención IRPF
+  const total = Math.max(0, Math.round((totalBruto - cuotaIRPF) * 100) / 100);
 
   let tipoFormateado = info.esIpsi
     ? `IPSI ${porcentajeImpuesto}%`
@@ -588,6 +648,9 @@ export function calcularLiquidacionFactura(params: {
   if (aplicaRecargo && porcentajeRE > 0) {
     tipoFormateado += ` + R.E. ${porcentajeRE}%`;
   }
+  if (aplicaIRPF && porcentajeIRPF > 0) {
+    tipoFormateado += ` (-${porcentajeIRPF}% IRPF)`;
+  }
 
   return {
     baseImponible: base,
@@ -596,7 +659,12 @@ export function calcularLiquidacionFactura(params: {
     aplicaRecargo,
     porcentajeRE,
     cuotaRE,
+    aplicaIRPF,
+    porcentajeIRPF,
+    cuotaIRPF,
+    conceptoIRPF: params.conceptoIRPF,
     total,
+    totalBruto,
     tipoFormateado,
     regimenEtiqueta: info.regimenEtiqueta,
   };
@@ -767,5 +835,314 @@ export function procesarDesgloseFiscalCompleto(
       tieneRE,
       tieneExento,
     },
+  };
+}
+
+/**
+ * Estructura de perceptor individual con retención de IRPF
+ */
+export interface PerceptorIRPFResumen {
+  idProveedor?: string;
+  nombreProveedor: string;
+  cifProveedor?: string;
+  modeloAeat: '111' | '115' | '123' | 'OTRO' | string;
+  concepto: ConceptoRetencionIRPF | string;
+  baseTotal: number;
+  porcentaje: number;
+  cuotaTotal: number;
+  facturasCount: number;
+  facturasIds: string[];
+}
+
+/**
+ * Estructura de desglose de retenciones de IRPF para declaraciones tributarias (Mod. 111 / 115)
+ */
+export interface ResumenRetencionesIRPF {
+  cuotaIRPFTotal: number;
+  totalRetenido: number;
+  baseTotal: number;
+  totalBaseSujeta: number;
+  totalLiquidoAfectado: number;
+  numFacturasConIRPF: number;
+  facturasConIRPF: Factura[];
+  modelo111: {
+    nombre: string;
+    descripcion: string;
+    numPerceptores: number;
+    baseTotal: number;
+    cuotaTotal: number;
+    count: number;
+    facturasIds: string[];
+  };
+  modelo115: {
+    nombre: string;
+    descripcion: string;
+    numPerceptores: number;
+    baseTotal: number;
+    cuotaTotal: number;
+    count: number;
+    facturasIds: string[];
+  };
+  otros: {
+    nombre: string;
+    descripcion: string;
+    numPerceptores: number;
+    baseTotal: number;
+    cuotaTotal: number;
+    count: number;
+    facturasIds: string[];
+  };
+  desgloseModelos: {
+    mod111: {
+      nombre: string;
+      descripcion: string;
+      base: number;
+      retencion: number;
+      count: number;
+      facturasIds: string[];
+    };
+    mod115: {
+      nombre: string;
+      descripcion: string;
+      base: number;
+      retencion: number;
+      count: number;
+      facturasIds: string[];
+    };
+    otros: {
+      nombre: string;
+      descripcion: string;
+      base: number;
+      retencion: number;
+      count: number;
+      facturasIds: string[];
+    };
+  };
+  perceptores: PerceptorIRPFResumen[];
+  desglosePorPorcentaje: {
+    porcentaje: number;
+    etiqueta: string;
+    base: number;
+    cuotaRetencion: number;
+    count: number;
+  }[];
+}
+
+/**
+ * Procesa y agrupa todas las facturas con retención de IRPF
+ * generando las métricas necesarias para los Modelos oficiales 111 y 115 de la AEAT
+ */
+export function procesarRetencionesIRPF(facturas: Factura[] = []): ResumenRetencionesIRPF {
+  let totalRetenido = 0;
+  let totalBaseSujeta = 0;
+  let totalLiquidoAfectado = 0;
+
+  const facturasConIRPF: Factura[] = [];
+
+  const mod111 = {
+    nombre: 'Modelo 111 (Profesionales y Autónomos)',
+    descripcion: 'Retenciones del IRPF a profesionales colegiados, nuevos autónomos y actividades agrarias.',
+    base: 0,
+    retencion: 0,
+    count: 0,
+    facturasIds: [] as string[],
+    perceptoresSet: new Set<string>(),
+  };
+
+  const mod115 = {
+    nombre: 'Modelo 115 (Arrendamientos de Inmuebles Urbanos)',
+    descripcion: 'Retenciones sobre el alquiler de locales comerciales, oficinas y almacenes.',
+    base: 0,
+    retencion: 0,
+    count: 0,
+    facturasIds: [] as string[],
+    perceptoresSet: new Set<string>(),
+  };
+
+  const otros = {
+    nombre: 'Otras Retenciones (Mod. 123 / Capital / Otros)',
+    descripcion: 'Retenciones sobre rendimientos del capital mobiliario, licencias o epígrafes singulares.',
+    base: 0,
+    retencion: 0,
+    count: 0,
+    facturasIds: [] as string[],
+    perceptoresSet: new Set<string>(),
+  };
+
+  const mapPorcentaje = new Map<number, { porcentaje: number; etiqueta: string; base: number; cuotaRetencion: number; count: number }>();
+  const mapPerceptores = new Map<string, PerceptorIRPFResumen>();
+
+  const facturasList = Array.isArray(facturas) ? facturas : [];
+
+  facturasList.forEach((f) => {
+    if (!f) return;
+    // Comprobar si la factura tiene retención explícita o calculada
+    const cuota = Number(f.cuotaIRPF) || 0;
+    const tieneRetencion = Boolean(f.aplicaRetencionIRPF || cuota > 0 || (f.porcentajeIRPF && f.porcentajeIRPF > 0));
+
+    if (tieneRetencion) {
+      const base = Number(f.baseImponible) || 0;
+      const pct = f.porcentajeIRPF !== undefined && f.porcentajeIRPF !== null && !isNaN(Number(f.porcentajeIRPF))
+        ? Number(f.porcentajeIRPF)
+        : extraerPorcentajeIRPF(f.tipoRetencionIRPF);
+      const cuotaCalculada = cuota > 0 ? cuota : Math.round(base * (pct / 100) * 100) / 100;
+      const tot = Number(f.total) || (base - cuotaCalculada);
+
+      // Si la cuota calculada es 0 y no hay porcentaje, ignorar
+      if (cuotaCalculada === 0 && pct === 0) return;
+
+      totalRetenido += cuotaCalculada;
+      totalBaseSujeta += base;
+      totalLiquidoAfectado += tot;
+      facturasConIRPF.push(f);
+
+      // Clasificación por modelo AEAT
+      const concepto = f.conceptoRetencionIRPF || (pct === 19 ? 'ARRENDAMIENTO' : pct === 2 ? 'AGRARIO' : 'PROFESIONAL');
+      const nombreProv = f.nombreProveedor || f.idProveedor || 'Proveedor sin nombre';
+      const cifProv = (f as any).cif || (f as any).nif || (f as any).cifProveedor || '';
+
+      let modeloAeat: '111' | '115' | '123' | 'OTRO' = '111';
+
+      if (concepto === 'ARRENDAMIENTO' || (pct === 19 && (!f.conceptoRetencionIRPF || f.conceptoRetencionIRPF === 'ARRENDAMIENTO'))) {
+        modeloAeat = '115';
+        mod115.base += base;
+        mod115.retencion += cuotaCalculada;
+        mod115.count += 1;
+        mod115.facturasIds.push(f.idFactura);
+        mod115.perceptoresSet.add(nombreProv.toLowerCase().trim());
+      } else if (concepto === 'PROFESIONAL' || concepto === 'AGRARIO' || pct === 15 || pct === 7 || pct === 2 || pct === 1) {
+        modeloAeat = '111';
+        mod111.base += base;
+        mod111.retencion += cuotaCalculada;
+        mod111.count += 1;
+        mod111.facturasIds.push(f.idFactura);
+        mod111.perceptoresSet.add(nombreProv.toLowerCase().trim());
+      } else {
+        modeloAeat = 'OTRO';
+        otros.base += base;
+        otros.retencion += cuotaCalculada;
+        otros.count += 1;
+        otros.facturasIds.push(f.idFactura);
+        otros.perceptoresSet.add(nombreProv.toLowerCase().trim());
+      }
+
+      // Agrupación de perceptor
+      const keyPerceptor = `${nombreProv.toLowerCase().trim()}_${modeloAeat}_${pct}`;
+      if (!mapPerceptores.has(keyPerceptor)) {
+        mapPerceptores.set(keyPerceptor, {
+          idProveedor: f.idProveedor,
+          nombreProveedor: nombreProv,
+          cifProveedor: cifProv,
+          modeloAeat,
+          concepto,
+          baseTotal: 0,
+          porcentaje: pct,
+          cuotaTotal: 0,
+          facturasCount: 0,
+          facturasIds: [],
+        });
+      }
+
+      const pObj = mapPerceptores.get(keyPerceptor)!;
+      pObj.baseTotal = Math.round((pObj.baseTotal + base) * 100) / 100;
+      pObj.cuotaTotal = Math.round((pObj.cuotaTotal + cuotaCalculada) * 100) / 100;
+      pObj.facturasCount += 1;
+      pObj.facturasIds.push(f.idFactura);
+      if (!pObj.cifProveedor && cifProv) pObj.cifProveedor = cifProv;
+
+      // Desglose por porcentaje
+      if (!mapPorcentaje.has(pct)) {
+        let etiqueta = `${pct}% IRPF`;
+        if (pct === 15) etiqueta = '15% Profesional General';
+        else if (pct === 7) etiqueta = '7% Nuevos Autónomos';
+        else if (pct === 19) etiqueta = '19% Arrendamiento';
+        else if (pct === 2) etiqueta = '2% Agrario';
+        else if (pct === 1) etiqueta = '1% Módulos';
+
+        mapPorcentaje.set(pct, {
+          porcentaje: pct,
+          etiqueta,
+          base: 0,
+          cuotaRetencion: 0,
+          count: 0,
+        });
+      }
+
+      const itemPct = mapPorcentaje.get(pct)!;
+      itemPct.base += base;
+      itemPct.cuotaRetencion += cuotaCalculada;
+      itemPct.count += 1;
+    }
+  });
+
+  const desglosePorPorcentaje = Array.from(mapPorcentaje.values()).sort((a, b) => b.porcentaje - a.porcentaje);
+  const perceptores = Array.from(mapPerceptores.values()).sort((a, b) => b.cuotaTotal - a.cuotaTotal);
+
+  const roundedTotalRetenido = Math.round(totalRetenido * 100) / 100;
+  const roundedBaseSujeta = Math.round(totalBaseSujeta * 100) / 100;
+
+  return {
+    cuotaIRPFTotal: roundedTotalRetenido,
+    totalRetenido: roundedTotalRetenido,
+    baseTotal: roundedBaseSujeta,
+    totalBaseSujeta: roundedBaseSujeta,
+    totalLiquidoAfectado: Math.round(totalLiquidoAfectado * 100) / 100,
+    numFacturasConIRPF: facturasConIRPF.length,
+    facturasConIRPF,
+    modelo111: {
+      nombre: mod111.nombre,
+      descripcion: mod111.descripcion,
+      numPerceptores: mod111.perceptoresSet.size,
+      baseTotal: Math.round(mod111.base * 100) / 100,
+      cuotaTotal: Math.round(mod111.retencion * 100) / 100,
+      count: mod111.count,
+      facturasIds: mod111.facturasIds,
+    },
+    modelo115: {
+      nombre: mod115.nombre,
+      descripcion: mod115.descripcion,
+      numPerceptores: mod115.perceptoresSet.size,
+      baseTotal: Math.round(mod115.base * 100) / 100,
+      cuotaTotal: Math.round(mod115.retencion * 100) / 100,
+      count: mod115.count,
+      facturasIds: mod115.facturasIds,
+    },
+    otros: {
+      nombre: otros.nombre,
+      descripcion: otros.descripcion,
+      numPerceptores: otros.perceptoresSet.size,
+      baseTotal: Math.round(otros.base * 100) / 100,
+      cuotaTotal: Math.round(otros.retencion * 100) / 100,
+      count: otros.count,
+      facturasIds: otros.facturasIds,
+    },
+    desgloseModelos: {
+      mod111: {
+        nombre: mod111.nombre,
+        descripcion: mod111.descripcion,
+        base: Math.round(mod111.base * 100) / 100,
+        retencion: Math.round(mod111.retencion * 100) / 100,
+        count: mod111.count,
+        facturasIds: mod111.facturasIds,
+      },
+      mod115: {
+        nombre: mod115.nombre,
+        descripcion: mod115.descripcion,
+        base: Math.round(mod115.base * 100) / 100,
+        retencion: Math.round(mod115.retencion * 100) / 100,
+        count: mod115.count,
+        facturasIds: mod115.facturasIds,
+      },
+      otros: {
+        nombre: otros.nombre,
+        descripcion: otros.descripcion,
+        base: Math.round(otros.base * 100) / 100,
+        retencion: Math.round(otros.retencion * 100) / 100,
+        count: otros.count,
+        facturasIds: otros.facturasIds,
+      },
+    },
+    perceptores,
+    desglosePorPorcentaje,
   };
 }

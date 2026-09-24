@@ -149,6 +149,27 @@ export function obtenerParametrosSistema(): ParametrosSistema {
           ? parsed.tiposImpositivos
           : base.tiposImpositivos,
 
+      habilitarRetencionesIRPF:
+        parsed.habilitarRetencionesIRPF !== undefined
+          ? Boolean(parsed.habilitarRetencionesIRPF)
+          : base.habilitarRetencionesIRPF,
+      porcentajeIrpfPredeterminado:
+        typeof parsed.porcentajeIrpfPredeterminado === 'number' && !isNaN(parsed.porcentajeIrpfPredeterminado)
+          ? parsed.porcentajeIrpfPredeterminado
+          : base.porcentajeIrpfPredeterminado,
+      tipoIrpfRetencionPredeterminado:
+        typeof parsed.tipoIrpfRetencionPredeterminado === 'string'
+          ? parsed.tipoIrpfRetencionPredeterminado
+          : base.tipoIrpfRetencionPredeterminado,
+      conceptoIrpfPredeterminado:
+        ['PROFESIONAL', 'ARRENDAMIENTO', 'AGRARIO', 'MODULOS', 'OTRO'].includes(parsed.conceptoIrpfPredeterminado)
+          ? parsed.conceptoIrpfPredeterminado
+          : base.conceptoIrpfPredeterminado,
+      tiposRetencionIRPF:
+        Array.isArray(parsed.tiposRetencionIRPF) && parsed.tiposRetencionIRPF.length > 0
+          ? parsed.tiposRetencionIRPF
+          : base.tiposRetencionIRPF,
+
       actualizadoEn: parsed.actualizadoEn,
     };
   } catch (error) {

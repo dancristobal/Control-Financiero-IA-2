@@ -32,7 +32,13 @@ export interface Factura {
   aplicaRecargoEquivalencia?: boolean;
   tipoRecargoEquivalencia?: string; // ej: '5.2%', '1.4%', '0.5%', '0.62%', '0.7%'
   cuotaRecargoEquivalencia?: number;
-  total: number;
+  // Retención de IRPF (Profesionales, Nuevos Autónomos, Arrendamientos, Agrario)
+  aplicaRetencionIRPF?: boolean;
+  tipoRetencionIRPF?: string; // ej: '15% Profesional', '7% Nuevo Autónomo', '19% Arrendamiento', '2% Agrario'
+  porcentajeIRPF?: number; // ej: 15, 7, 19, 2, 1
+  cuotaIRPF?: number; // Base Imponible * (porcentajeIRPF / 100)
+  conceptoRetencionIRPF?: ConceptoRetencionIRPF;
+  total: number; // Líquido total a pagar: Base + Cuota Impuesto + Cuota RE - Cuota IRPF
   categoriaGasto:
     | 'Insumos'
     | 'Logística'
@@ -272,7 +278,35 @@ export interface ParametrosSistema {
   mostrarTiposIpsi: boolean; // Por defecto: true (IPSI 0.5%, 1%, 2%, 4%, 8%, 10%)
   tiposImpositivos: TipoImpositivoConfigurable[];
 
+  // 6. Retenciones de IRPF (Profesionales, Nuevos Autónomos, Arrendamientos)
+  habilitarRetencionesIRPF: boolean; // Por defecto: true
+  porcentajeIrpfPredeterminado: number; // Por defecto: 15
+  tipoIrpfRetencionPredeterminado: string; // Por defecto: '15% Profesional'
+  conceptoIrpfPredeterminado: ConceptoRetencionIRPF; // Por defecto: 'PROFESIONAL'
+  tiposRetencionIRPF: TipoRetencionIRPFConfigurable[];
+
   actualizadoEn?: string;
+}
+
+export type ConceptoRetencionIRPF =
+  | 'PROFESIONAL'
+  | 'ARRENDAMIENTO'
+  | 'AGRARIO'
+  | 'CAPITAL_MOBILIARIO'
+  | 'OTRO';
+
+export interface TipoRetencionIRPFConfigurable {
+  id: string;
+  codigo: string;
+  nombre: string;
+  valor: string; // ej: '15%', '7%', '19%', '2%', '1%'
+  porcentaje: number;
+  concepto: ConceptoRetencionIRPF;
+  modeloAEAT: '111' | '115' | '123' | 'OTRO';
+  habilitado: boolean;
+  esPersonalizado?: boolean;
+  descripcion?: string;
+  ejemplos?: string;
 }
 
 export type TipoImpuestoJurisdiccion = 'IVA' | 'IGIC' | 'IPSI' | 'EXENTO' | 'OTRO';
@@ -560,6 +594,81 @@ export const TIPOS_IMPOSITIVOS_PREDETERMINADOS: TipoImpositivoConfigurable[] = [
   },
 ];
 
+export const TIPOS_RETENCION_IRPF_PREDETERMINADOS: TipoRetencionIRPFConfigurable[] = [
+  {
+    id: 'irpf-15-prof',
+    codigo: 'IRPF_15_PROF',
+    nombre: '15% - Retención Profesional General (Mod. 111)',
+    valor: '15%',
+    porcentaje: 15,
+    concepto: 'PROFESIONAL',
+    modeloAEAT: '111',
+    habilitado: true,
+    descripcion: 'Tipo de retención estándar en España aplicable a profesionales autónomos colegiados y actividades profesionales (IAE Sección 2 y 3).',
+    ejemplos: 'Servicios de asesoría fiscal, contable, abogados, desarrollo de software, diseño, consultoría técnica',
+  },
+  {
+    id: 'irpf-7-nuevo-autonomo',
+    codigo: 'IRPF_7_NUEVO',
+    nombre: '7% - Nuevos Autónomos / Tipo Reducido (Mod. 111)',
+    valor: '7%',
+    porcentaje: 7,
+    concepto: 'PROFESIONAL',
+    modeloAEAT: '111',
+    habilitado: true,
+    descripcion: 'Tipo reducido aplicable a profesionales autónomos durante el año de inicio de su actividad y los dos ejercicios posteriores (art. 95.1 RIRPF).',
+    ejemplos: 'Profesionales en sus primeros 3 años de actividad que hayan comunicado el tipo reducido',
+  },
+  {
+    id: 'irpf-19-alquiler',
+    codigo: 'IRPF_19_ALQUILER',
+    nombre: '19% - Arrendamiento de Inmuebles Urbanos (Mod. 115)',
+    valor: '19%',
+    porcentaje: 19,
+    concepto: 'ARRENDAMIENTO',
+    modeloAEAT: '115',
+    habilitado: true,
+    descripcion: 'Retención obligatoria sobre el alquiler de locales comerciales, oficinas, almacenes o naves industriales (art. 62 RIRPF).',
+    ejemplos: 'Alquiler de local comercial, oficina de la empresa, almacén logístico',
+  },
+  {
+    id: 'irpf-2-agrario',
+    codigo: 'IRPF_2_AGRARIO',
+    nombre: '2% - Actividades Agrícolas y Ganaderas (Mod. 111)',
+    valor: '2%',
+    porcentaje: 2,
+    concepto: 'AGRARIO',
+    modeloAEAT: '111',
+    habilitado: true,
+    descripcion: 'Retención aplicable a entregas de productos de agricultura, ganadería de cebo y avicultura.',
+    ejemplos: 'Productores agropecuarios, ganadería de cebo, avicultura',
+  },
+  {
+    id: 'irpf-1-modulos',
+    codigo: 'IRPF_1_MODULOS',
+    nombre: '1% - Actividades en Módulos / Ciertos Sectores (Mod. 111)',
+    valor: '1%',
+    porcentaje: 1,
+    concepto: 'OTRO',
+    modeloAEAT: '111',
+    habilitado: true,
+    descripcion: 'Retención del 1% para determinadas actividades empresariales sujetas a retención en estimación objetiva (módulos).',
+    ejemplos: 'Transporte de mercancías por carretera, carpintería, cerrajería, pintura',
+  },
+  {
+    id: 'irpf-19-capital',
+    codigo: 'IRPF_19_CAPITAL',
+    nombre: '19% - Capital Mobiliario / Licencias / Royalties (Mod. 123)',
+    valor: '19%',
+    porcentaje: 19,
+    concepto: 'CAPITAL_MOBILIARIO',
+    modeloAEAT: '123',
+    habilitado: false,
+    descripcion: 'Retención sobre cesión de derechos de autor, licencias de propiedad intelectual o industrial y dividendos.',
+    ejemplos: 'Cesión de marcas, patentes o derechos de explotación de propiedad intelectual',
+  },
+];
+
 export const DEFAULT_PARAMETROS_SISTEMA: ParametrosSistema = {
   umbralSubidaModeradaPct: 8,
   umbralSubidaCriticaPct: 15,
@@ -590,5 +699,12 @@ export const DEFAULT_PARAMETROS_SISTEMA: ParametrosSistema = {
   mostrarTiposCanarios: true,
   mostrarTiposIpsi: true,
   tiposImpositivos: TIPOS_IMPOSITIVOS_PREDETERMINADOS,
+
+  // Retenciones IRPF
+  habilitarRetencionesIRPF: true,
+  porcentajeIrpfPredeterminado: 15,
+  tipoIrpfRetencionPredeterminado: '15%',
+  conceptoIrpfPredeterminado: 'PROFESIONAL',
+  tiposRetencionIRPF: TIPOS_RETENCION_IRPF_PREDETERMINADOS,
 };
 

@@ -365,6 +365,7 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
    - Tipos temporales reducidos de alimentos/aceite de oliva: '0% (Temporal)', '5% (Temporal)', '2% (Temporal)'.
    - Régimen autonómico canario: 'IGIC 7%', 'IGIC 3%', 'IGIC 0%'.
    - Recargo de Equivalencia (R.E.): Si la factura indica recargo de equivalencia (minoristas), marcar "aplicaRecargoEquivalencia: true", extraer la cuota del recargo en "cuotaRecargoEquivalencia" e indicar el tipo en "tipoRecargoEquivalencia" (ej: '5.2%', '1.4%', '0.5%', '0.62%', '0.7%').
+   - Retención de IRPF: Si la factura incluye retención de IRPF (típico en facturas de autónomos y profesionales al 15% o 7%, o alquileres de locales al 19%, o agrícolas al 2%), marcar "aplicaRetencionIRPF: true", extraer "porcentajeIRPF" (número, ej: 15, 7, 19), "tipoRetencionIRPF" (ej: "15%", "7%", "19%"), "cuotaIRPF" (cuota retenida en euros), y "conceptoRetencionIRPF" ("PROFESIONAL", "ARRENDAMIENTO", "AGRARIO" o "OTRO"). El total líquido debe calcularse como: Base + IVA/IGIC + Recargo - Retención IRPF.
    - Operaciones exentas: '0% Exento'.
 7. Si conoces la lista de proveedores registrados: ${JSON.stringify(existingSuppliers || [])}, intenta vincular el idProveedor si coincide el nombre del proveedor. Si es nuevo, asígnale un ID coherente.`;
 
@@ -377,7 +378,7 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
     };
 
     const textPart = {
-      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema, contemplando el régimen fiscal (IVA Peninsular 21/10/4%, temporales 0/5%, IGIC canario 7/3% o Recargo de Equivalencia) y proponiendo automáticamente la categoría de gasto adecuada.`,
+      text: `Por favor analiza esta factura y extrae los datos estructurados en formato JSON según el siguiente esquema, contemplando el régimen fiscal (IVA Peninsular 21/10/4%, temporales 0/5%, IGIC canario 7/3%, Recargo de Equivalencia o Retención de IRPF) y proponiendo automáticamente la categoría de gasto adecuada.`,
     };
 
     let parsedJson: any = null;
@@ -400,7 +401,12 @@ En "categoriaGastoJustificacion", redacta una frase concisa explicando cómo el 
         aplicaRecargoEquivalencia: { type: Type.BOOLEAN, description: 'true si la factura contiene recargo de equivalencia minorista' },
         tipoRecargoEquivalencia: { type: Type.STRING, description: 'Porcentaje del recargo de equivalencia ej: "5.2%", "1.4%", "0.5%", "0.62%", "0.7%"' },
         cuotaRecargoEquivalencia: { type: Type.NUMBER, description: 'Importe de la cuota del recargo de equivalencia en euros' },
-        total: { type: Type.NUMBER, description: 'Importe total factura con impuestos (Base + IVA/IGIC + Recargo si aplica)' },
+        aplicaRetencionIRPF: { type: Type.BOOLEAN, description: 'true si la factura incluye retención de IRPF a cuenta (profesionales, alquileres, autónomos)' },
+        porcentajeIRPF: { type: Type.NUMBER, description: 'Porcentaje numérico de IRPF aplicado (ej: 15, 7, 19, 2, 1)' },
+        tipoRetencionIRPF: { type: Type.STRING, description: 'Texto del tipo de retención, ej: "15%", "7%", "19%"' },
+        cuotaIRPF: { type: Type.NUMBER, description: 'Cuota monetaria retenida de IRPF en euros' },
+        conceptoRetencionIRPF: { type: Type.STRING, description: 'Concepto IRPF: PROFESIONAL, ARRENDAMIENTO, AGRARIO o OTRO' },
+        total: { type: Type.NUMBER, description: 'Importe total líquido de la factura (Base + IVA/IGIC + Recargo - Retención IRPF)' },
         categoriaGasto: {
           type: Type.STRING,
           description: `Categoría de gasto elegida entre: ${catsToUse.map((c: any) => `"${c.nombre}"`).join(', ')}`

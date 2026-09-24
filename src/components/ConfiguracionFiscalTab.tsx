@@ -25,6 +25,9 @@ import {
   TipoImpositivoConfigurable,
   TipoImpuestoJurisdiccion,
   TIPOS_IMPOSITIVOS_PREDETERMINADOS,
+  TipoRetencionIRPFConfigurable,
+  ConceptoRetencionIRPF,
+  TIPOS_RETENCION_IRPF_PREDETERMINADOS,
 } from '../types';
 import { aplicarPreajusteRegimen } from '../utils/fiscalidad';
 import { TipoImpositivoModal } from './TipoImpositivoModal';
@@ -42,6 +45,10 @@ export const ConfiguracionFiscalTab: React.FC<ConfiguracionFiscalTabProps> = ({
     ? parametros.tiposImpositivos
     : TIPOS_IMPOSITIVOS_PREDETERMINADOS;
 
+  const tiposIRPFLista = Array.isArray(parametros.tiposRetencionIRPF) && parametros.tiposRetencionIRPF.length > 0
+    ? parametros.tiposRetencionIRPF
+    : TIPOS_RETENCION_IRPF_PREDETERMINADOS;
+
   const [filtroJurisdiccion, setFiltroJurisdiccion] = useState<'TODOS' | TipoImpuestoJurisdiccion | 'PERSONALIZADOS'>('TODOS');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'HABILITADOS' | 'DESHABILITADOS'>('TODOS');
   const [busqueda, setBusqueda] = useState('');
@@ -58,7 +65,7 @@ export const ConfiguracionFiscalTab: React.FC<ConfiguracionFiscalTabProps> = ({
     setTimeout(() => setNotificacion(null), 3500);
   };
 
-  const regimenActual: RegimenFiscalEmpresa = parametros.regimenFiscalEmpresa || 'IVA_GENERAL';
+  const regimenActual: RegimenFiscalEmpresa = parametros.regimenFiscalEmpresa || 'IVA_PENINSULAR';
 
   // Manejar cambio de régimen y sugerir preajuste
   const handleCambiarRegimen = (nuevoRegimen: RegimenFiscalEmpresa) => {
@@ -106,6 +113,22 @@ export const ConfiguracionFiscalTab: React.FC<ConfiguracionFiscalTabProps> = ({
     onUpdateParametros(nuevos);
     mostrarNotificacion(
       `Tipo "${tipoModificado?.nombre || id}" ${tipoModificado?.habilitado ? 'habilitado' : 'deshabilitado'} globalmente.`
+    );
+  };
+
+  // Toggle rápido de habilitado/deshabilitado de un tipo de retención IRPF
+  const handleToggleHabilitadoIRPF = (id: string) => {
+    const actualizados = tiposIRPFLista.map((t) =>
+      t.id === id ? { ...t, habilitado: !t.habilitado } : t
+    );
+    const item = actualizados.find((t) => t.id === id);
+    const nuevos: ParametrosSistema = {
+      ...parametros,
+      tiposRetencionIRPF: actualizados,
+    };
+    onUpdateParametros(nuevos);
+    mostrarNotificacion(
+      `Retención IRPF "${item?.nombre || id}" ${item?.habilitado ? 'habilitada' : 'deshabilitada'}.`
     );
   };
 
@@ -386,6 +409,34 @@ export const ConfiguracionFiscalTab: React.FC<ConfiguracionFiscalTabProps> = ({
               </div>
             </label>
           </div>
+
+          {/* Porcentaje de IRPF predeterminado */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-emerald-300 flex items-center justify-between">
+              <span>Retención IRPF Predeterminada</span>
+              <span className="text-[10px] text-slate-400 font-normal">Mod. 111 / 115</span>
+            </label>
+            <select
+              value={parametros.porcentajeIrpfPredeterminado ?? 15}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value) || 15;
+                const nuevos = {
+                  ...parametros,
+                  porcentajeIrpfPredeterminado: val,
+                  conceptoIrpfPredeterminado: (val === 19 ? 'ARRENDAMIENTO' : val === 2 ? 'AGRARIO' : 'PROFESIONAL') as ConceptoRetencionIRPF
+                };
+                onUpdateParametros(nuevos);
+                mostrarNotificacion(`Retención IRPF predeterminada fijada en ${val}%`);
+              }}
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-emerald-700/60 text-emerald-200 text-xs focus:outline-hidden focus:border-emerald-500 font-mono"
+            >
+              <option value="15">15% Profesional General (Mod. 111)</option>
+              <option value="7">7% Nuevos Autónomos - Primeros 3 años (Mod. 111)</option>
+              <option value="19">19% Arrendamiento Inmuebles / Locales (Mod. 115)</option>
+              <option value="2">2% Actividades Agrícolas y Ganaderas (Mod. 111)</option>
+              <option value="1">1% Módulos / Estimación Objetiva (Mod. 111)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -510,6 +561,83 @@ export const ConfiguracionFiscalTab: React.FC<ConfiguracionFiscalTabProps> = ({
               </p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* BLOQUE 3: CATÁLOGO DE RETENCIONES DE IRPF (MODELOS 111 Y 115 AEAT) */}
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-[#091512] border border-emerald-800/50 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-900/40 pb-3">
+          <div className="flex items-center gap-2">
+            <Percent className="w-4 h-4 text-emerald-400" />
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              3. Catálogo de Retenciones de IRPF a Cuenta (Modelos 111 y 115)
+            </h4>
+          </div>
+          <span className="text-[11px] text-emerald-400 font-mono">
+            Hacienda Pública / AEAT
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Configuración de los tipos de retención aplicados en facturas de proveedores profesionales, autónomos y alquileres. La retención minorará el total líquido pagado al proveedor y se liquidará periódicamente ante la Agencia Tributaria.
+        </p>
+
+        {/* Grid de Retenciones de IRPF Disponibles */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+          {tiposIRPFLista.map((irpf) => (
+            <div
+              key={irpf.id}
+              className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between ${
+                irpf.habilitado
+                  ? 'bg-slate-950/80 border-emerald-700/60 shadow-xs'
+                  : 'bg-slate-950/40 border-slate-800 opacity-60'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {irpf.modeloAEAT || (irpf as any).modeloAeat || '111'}
+                  </span>
+
+                  {/* Switch de Habilitación */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleHabilitadoIRPF(irpf.id)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      irpf.habilitado ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                    title={irpf.habilitado ? 'Habilitado (clic para desactivar)' : 'Deshabilitado (clic para activar)'}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        irpf.habilitado ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <h5 className="text-xs font-bold text-slate-100 leading-tight">
+                    {irpf.nombre}
+                  </h5>
+                  <span className="text-base font-black font-mono text-emerald-400 shrink-0">
+                    -{irpf.porcentaje}%
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed mb-2">
+                  {irpf.descripcion}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span>Concepto: {irpf.concepto}</span>
+                <span className={irpf.habilitado ? 'text-emerald-400 font-semibold' : 'text-slate-500'}>
+                  {irpf.habilitado ? 'Disponible en facturas' : 'Inactivo'}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -256,7 +256,7 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
               </span>
             </div>
             <div className="flex items-center justify-between text-slate-400">
-              <span>IVA Aplicado ({factura.tiposIVA})</span>
+              <span>IVA / Impuesto ({factura.tiposIVA})</span>
               <span className="font-mono font-medium text-sky-400">
                 +{factura.cuotaIVA.toLocaleString('es-ES', {
                   minimumFractionDigits: 2,
@@ -265,8 +265,56 @@ export const FacturaDetalleModal: React.FC<FacturaDetalleModalProps> = ({
                 €
               </span>
             </div>
+
+            {/* Recargo de Equivalencia si aplica */}
+            {(factura.aplicaRecargoEquivalencia || (factura.cuotaRecargoEquivalencia && factura.cuotaRecargoEquivalencia > 0)) && (
+              <div className="flex items-center justify-between text-purple-400 bg-purple-950/20 px-2 py-1 rounded-lg border border-purple-800/40">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold">Recargo Equivalencia</span>
+                  {factura.tipoRecargoEquivalencia && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
+                      +{factura.tipoRecargoEquivalencia}
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono font-bold">
+                  +{(factura.cuotaRecargoEquivalencia || 0).toLocaleString('es-ES', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  €
+                </span>
+              </div>
+            )}
+
+            {/* Retención de IRPF si aplica */}
+            {(factura.aplicaRetencionIRPF || (factura.cuotaIRPF && factura.cuotaIRPF > 0)) && (
+              <div className="flex items-center justify-between text-emerald-400 bg-emerald-950/20 px-2 py-1 rounded-lg border border-emerald-800/40">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold">Retención IRPF a Cuenta</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                    -{factura.porcentajeIRPF || 15}% ({factura.conceptoRetencionIRPF === 'ARRENDAMIENTO' ? 'Mod. 115 Alquiler' : factura.conceptoRetencionIRPF === 'AGRARIO' ? 'Mod. 111 Agrario' : 'Mod. 111 Profesional'})
+                  </span>
+                </div>
+                <span className="font-mono font-bold">
+                  -{(factura.cuotaIRPF || 0).toLocaleString('es-ES', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  €
+                </span>
+              </div>
+            )}
+
             <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-sm">
-              <span className="font-bold text-slate-100">Total Factura</span>
+              <div>
+                <span className="font-bold text-slate-100">Total Líquido a Pagar</span>
+                {(factura.aplicaRetencionIRPF || (factura.cuotaIRPF && factura.cuotaIRPF > 0)) && (
+                  <div className="text-[10px] text-emerald-400 font-normal">
+                    (Base + IVA - Retención IRPF)
+                  </div>
+                )}
+              </div>
               <span className="font-bold text-rose-400 font-mono text-base">
                 {factura.total.toLocaleString('es-ES', {
                   minimumFractionDigits: 2,

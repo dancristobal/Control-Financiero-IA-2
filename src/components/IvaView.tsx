@@ -32,6 +32,7 @@ import {
 import { Factura, ParametrosSistema, TipoImpositivoConfigurable, TIPOS_IMPOSITIVOS_PREDETERMINADOS } from '../types';
 import {
   procesarDesgloseFiscalCompleto,
+  procesarRetencionesIRPF,
   CATALOGO_TIPOS_IMPOSITIVOS,
   TABLA_RECARGO_EQUIVALENCIA,
   RegimenFiscalTipo
@@ -44,7 +45,7 @@ interface IvaViewProps {
 }
 
 type PeriodoIVA = 'T1' | 'T2' | 'T3' | 'T4' | 'ANUAL';
-type FiltroRegimen = 'TODOS' | 'IVA_GENERAL' | 'IVA_TEMPORAL' | 'IGIC_CANARIAS' | 'IPSI_CEUTA_MELILLA' | 'RECARGO_EQUIVALENCIA';
+type FiltroRegimen = 'TODOS' | 'IVA_GENERAL' | 'IVA_TEMPORAL' | 'IGIC_CANARIAS' | 'IPSI_CEUTA_MELILLA' | 'RECARGO_EQUIVALENCIA' | 'RETENCION_IRPF';
 
 export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion }) => {
   const [periodo, setPeriodo] = useState<PeriodoIVA>('ANUAL');
@@ -94,9 +95,17 @@ export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion 
     return procesarDesgloseFiscalCompleto(facturasPeriodo, tiposConfigurados);
   }, [facturasPeriodo, tiposConfigurados]);
 
+  // Overall IRPF withholding summary for the period
+  const desgloseIRPF = useMemo(() => {
+    return procesarRetencionesIRPF(facturasPeriodo);
+  }, [facturasPeriodo]);
+
   // Facturas filtered by both Period and Tax Regime
   const facturasFiltradas = useMemo(() => {
     if (filtroRegimen === 'TODOS') return facturasPeriodo;
+    if (filtroRegimen === 'RETENCION_IRPF') {
+      return facturasPeriodo.filter((f) => f.aplicaRetencionIRPF || (f.cuotaIRPF && f.cuotaIRPF > 0));
+    }
     if (filtroRegimen === 'RECARGO_EQUIVALENCIA') {
       return facturasPeriodo.filter(
         (f) =>
@@ -305,6 +314,19 @@ export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion 
             <span>Recargo de Equivalencia (R.E.)</span>
           </button>
 
+          <button
+            onClick={() => setFiltroRegimen('RETENCION_IRPF')}
+            className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 ${
+              filtroRegimen === 'RETENCION_IRPF'
+                ? 'bg-emerald-600 text-white shadow-sm font-semibold'
+                : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+            }`}
+            title="Facturas con retención de IRPF para Modelos 111 y 115"
+          >
+            <Percent className="w-3.5 h-3.5 text-emerald-300" />
+            <span>Retención IRPF ({desgloseIRPF?.numFacturasConIRPF ?? 0})</span>
+          </button>
+
           {(parametros.mostrarTiposIpsi ||
             parametros.regimenFiscalEmpresa === 'IPSI_CEUTA_MELILLA' ||
             facturasPeriodo.some(
@@ -463,65 +485,82 @@ export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion 
       </div>
 
       {/* Key Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+        <div className="p-4 rounded-2xl bg-[#101726] border border-slate-800/80">
+          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
             Facturas Registradas
           </span>
-          <div className="text-3xl font-extrabold text-slate-100 mt-2 font-mono">
+          <div className="text-2xl font-extrabold text-slate-100 mt-2 font-mono">
             {desgloseActivo.numFacturas.toLocaleString('es-ES')}
           </div>
-          <p className="text-xs text-slate-300 mt-1">
+          <p className="text-[11px] text-slate-400 mt-1">
             Periodo {periodo} {filtroRegimen !== 'TODOS' ? `(${filtroRegimen})` : ''}
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+        <div className="p-4 rounded-2xl bg-[#101726] border border-slate-800/80">
+          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
             Base Imponible Total
           </span>
-          <div className="text-2xl lg:text-3xl font-extrabold text-slate-200 mt-2 font-mono">
+          <div className="text-xl lg:text-2xl font-extrabold text-slate-200 mt-2 font-mono">
             {desgloseActivo.baseTotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
           </div>
-          <p className="text-xs text-slate-300 mt-1">Gasto neto deducible</p>
+          <p className="text-[11px] text-slate-400 mt-1">Gasto neto deducible</p>
         </div>
 
         <div
           id="kpi-cuota-iva"
-          className="p-5 rounded-2xl bg-gradient-to-br from-[#111e33] to-[#0c1424] border border-sky-500/40 shadow-lg shadow-sky-950/20"
+          className="p-4 rounded-2xl bg-gradient-to-br from-[#111e33] to-[#0c1424] border border-sky-500/40 shadow-lg shadow-sky-950/20"
         >
-          <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">
-            Cuota IVA / IGIC / IPSI Soportado
+          <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider">
+            IVA / IGIC Soportado
           </span>
-          <div className="text-2xl lg:text-3xl font-extrabold text-sky-300 mt-2 font-mono">
+          <div className="text-xl lg:text-2xl font-extrabold text-sky-300 mt-2 font-mono">
             {desgloseActivo.cuotaImpuestoTotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
           </div>
-          <p className="text-xs text-slate-300 mt-1">Impuesto deducible ordinario</p>
+          <p className="text-[11px] text-slate-400 mt-1">Mod. 303 / 420 Deducible</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#1c1228] to-[#120a1c] border border-purple-500/40 shadow-lg shadow-purple-950/20">
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-[#1c1228] to-[#120a1c] border border-purple-500/40 shadow-lg shadow-purple-950/20">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-              Recargo Equivalencia
+            <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+              Recargo Equiv. (R.E.)
             </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">
+            <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
               R.E.
             </span>
           </div>
-          <div className="text-2xl lg:text-3xl font-extrabold text-purple-300 mt-2 font-mono">
+          <div className="text-xl lg:text-2xl font-extrabold text-purple-300 mt-2 font-mono">
             {desgloseActivo.cuotaRETotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
           </div>
-          <p className="text-xs text-slate-300 mt-1">Recargo minorista soportado</p>
+          <p className="text-[11px] text-slate-400 mt-1">Recargo minorista</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80">
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-            Importe Total Bruto
-          </span>
-          <div className="text-2xl lg:text-3xl font-extrabold text-rose-400 mt-2 font-mono">
-            {desgloseActivo.totalAcumulado.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0b241b] to-[#071711] border border-emerald-500/40 shadow-lg shadow-emerald-950/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
+              Retenciones IRPF
+            </span>
+            <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+              111 / 115
+            </span>
           </div>
-          <p className="text-xs text-slate-300 mt-1">Base + IVA/IGIC + R.E.</p>
+          <div className="text-xl lg:text-2xl font-extrabold text-emerald-300 mt-2 font-mono">
+            {(desgloseIRPF?.cuotaIRPFTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+          </div>
+          <p className="text-[11px] text-emerald-400/80 mt-1">
+            {desgloseIRPF?.numFacturasConIRPF ?? 0} facturas con retención
+          </p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#101726] border border-slate-800/80">
+          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+            Total Bruto Acumulado
+          </span>
+          <div className="text-xl lg:text-2xl font-extrabold text-rose-400 mt-2 font-mono">
+            {(desgloseActivo?.totalAcumulado ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">Base + IVA/IGIC + R.E.</p>
         </div>
       </div>
 
@@ -683,6 +722,176 @@ export const IvaView: React.FC<IvaViewProps> = ({ facturas, onOpenConfiguracion 
           ) : (
             <div className="h-full flex items-center justify-center text-slate-500 text-xs">
               No hay datos para mostrar en este periodo y régimen seleccionado
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECCIÓN ESPECIAL: LIQUIDACIÓN DE RETENCIONES DE IRPF (MODELOS 111 Y 115 AEAT) */}
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0c1815] to-[#0a1114] border border-emerald-500/40 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-900/40 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                AEAT Modelos 111 / 115
+              </span>
+              <h3 className="text-lg font-bold text-slate-100">
+                Liquidación de Retenciones de IRPF Practicadas ({periodo})
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              Importes retenidos en facturas de profesionales, autónomos y arrendamiento de inmuebles a ingresar en la Agencia Tributaria.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <div className="text-[11px] text-emerald-400/90 font-medium">Total IRPF a Ingresar</div>
+              <div className="text-xl font-bold font-mono text-emerald-300">
+                {(desgloseIRPF?.cuotaIRPFTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumen por Modelos Fiscales Oficiales de la AEAT */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Tarjeta Modelo 111 */}
+          <div className="p-4 rounded-xl bg-slate-950/60 border border-emerald-800/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-xs font-mono">
+                  MODELO 111
+                </span>
+                <span className="text-xs font-bold text-slate-200">
+                  Actividades Profesionales y Agrarias
+                </span>
+              </div>
+              <span className="text-xs font-mono text-slate-400">
+                {desgloseIRPF?.modelo111?.numPerceptores ?? 0} perceptor(es)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-tight">
+              Retenciones del 15% (general), 7% (nuevos autónomos) o 2% (actividad agraria).
+            </p>
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between font-mono text-xs">
+              <span className="text-slate-400">Base retenida: {(desgloseIRPF?.modelo111?.baseTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+              <span className="font-bold text-emerald-300 text-sm">
+                A ingresar: {(desgloseIRPF?.modelo111?.cuotaTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              </span>
+            </div>
+          </div>
+
+          {/* Tarjeta Modelo 115 */}
+          <div className="p-4 rounded-xl bg-slate-950/60 border border-emerald-800/40 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-xs font-mono">
+                  MODELO 115
+                </span>
+                <span className="text-xs font-bold text-slate-200">
+                  Arrendamiento de Inmuebles Urbanos
+                </span>
+              </div>
+              <span className="text-xs font-mono text-slate-400">
+                {desgloseIRPF?.modelo115?.numPerceptores ?? 0} arrendador(es)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-tight">
+              Retención ordinaria del 19% practicada en facturas de alquiler de locales u oficinas.
+            </p>
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between font-mono text-xs">
+              <span className="text-slate-400">Base alquileres: {(desgloseIRPF?.modelo115?.baseTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+              <span className="font-bold text-emerald-300 text-sm">
+                A ingresar: {(desgloseIRPF?.modelo115?.cuotaTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla Detallada de Perceptores con Retención de IRPF */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              Detalle por Perceptores / Proveedores ({desgloseIRPF?.perceptores?.length ?? 0})
+            </h4>
+            <span className="text-[11px] text-slate-400">
+              Datos listos para la confección del modelo trimestral
+            </span>
+          </div>
+
+          {(desgloseIRPF?.perceptores?.length ?? 0) > 0 ? (
+            <div className="rounded-xl border border-slate-800 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#071310] text-emerald-300 border-b border-slate-800 uppercase text-[10px] font-bold tracking-wider">
+                  <tr>
+                    <th className="p-3">Perceptor / Proveedor</th>
+                    <th className="p-3">CIF / NIF</th>
+                    <th className="p-3">Modelo</th>
+                    <th className="p-3">Concepto</th>
+                    <th className="p-3 text-right">Base Sujeta</th>
+                    <th className="p-3 text-center">% IRPF</th>
+                    <th className="p-3 text-right">Cuota Retenida (AEAT)</th>
+                    <th className="p-3 text-center">Facturas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-[#06110e]">
+                  {desgloseIRPF?.perceptores?.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/40">
+                      <td className="p-3 font-semibold text-slate-200">
+                        {p.nombreProveedor}
+                      </td>
+                      <td className="p-3 font-mono text-slate-400">
+                        {p.cifProveedor || '—'}
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300">
+                          {p.modeloAeat}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-300 text-[11px]">
+                        {p.concepto === 'ARRENDAMIENTO' ? 'Alquiler Inmueble' : p.concepto === 'AGRARIO' ? 'Agrícola / Ganadero' : 'Act. Profesional'}
+                      </td>
+                      <td className="p-3 text-right font-mono text-slate-300">
+                        {(p.baseTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </td>
+                      <td className="p-3 text-center font-mono text-emerald-400 font-bold">
+                        {p.porcentaje}%
+                      </td>
+                      <td className="p-3 text-right font-mono text-emerald-300 font-bold">
+                        {(p.cuotaTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </td>
+                      <td className="p-3 text-center font-mono text-slate-400">
+                        {p.facturasCount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-[#050e0b] border-t border-emerald-900/60 font-mono font-bold text-xs">
+                  <tr>
+                    <td colSpan={4} className="p-3 text-slate-300">
+                      TOTAL RETENCIONES IRPF A LIQUIDAR ({periodo})
+                    </td>
+                    <td className="p-3 text-right text-slate-200">
+                      {(desgloseIRPF?.perceptores ?? []).reduce((sum, p) => sum + (p.baseTotal ?? 0), 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    </td>
+                    <td className="p-3 text-center text-slate-400">—</td>
+                    <td className="p-3 text-right text-emerald-300 text-sm">
+                      {(desgloseIRPF?.cuotaIRPFTotal ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    </td>
+                    <td className="p-3 text-center text-slate-400">
+                      {desgloseIRPF?.numFacturasConIRPF ?? 0}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="p-6 rounded-xl bg-slate-950/40 border border-slate-800 text-center text-xs text-slate-400">
+              No hay facturas con retención de IRPF registradas en el periodo {periodo}.
+              <p className="text-[11px] text-slate-500 mt-1">
+                Al registrar facturas de autónomos profesionales o de alquiler de locales con la casilla de IRPF marcada, aparecerán aquí agrupadas automáticamente.
+              </p>
             </div>
           )}
         </div>
