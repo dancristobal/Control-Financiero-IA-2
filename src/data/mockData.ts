@@ -88,6 +88,28 @@ export const INITIAL_PROVEEDORES: Proveedor[] = [
     tiempoMedioEntrega: '48h',
     cif: 'A-50982314',
     contacto: 'pedidos@molinosebro.es'
+  },
+  {
+    idProveedor: 'PROV-011',
+    nombreProveedor: 'Asesoría Fiscal & Laboral Gómez & Asociados',
+    productosSuministrados: 'Asesoría tributaria, contabilidad mercantil y laboral',
+    importeMensual: 650.00,
+    frecuencia: 'Mensual',
+    riesgoDependencia: 'Bajo',
+    tiempoMedioEntrega: 'Inmediato',
+    cif: 'B-84729103',
+    contacto: 'info@gomezasociadosfiscal.es'
+  },
+  {
+    idProveedor: 'PROV-012',
+    nombreProveedor: 'Inmobiliaria & Locales Comerciales Centro S.L.',
+    productosSuministrados: 'Arrendamiento de nave obrador central y muelle logístico',
+    importeMensual: 1800.00,
+    frecuencia: 'Mensual',
+    riesgoDependencia: 'Medio',
+    tiempoMedioEntrega: 'Continuo',
+    cif: 'B-28019482',
+    contacto: 'patrimonio@inmobiliariacentro.es'
   }
 ];
 
@@ -550,6 +572,62 @@ export const INITIAL_FACTURAS: Factura[] = [
       { nombreProducto: 'Mangas pasteleras y boquillas profesionales', cantidad: 10, unidad: 'packs', precioUnitario: 50.00, subtotal: 500.00 }
     ],
     notas: 'Factura con desglose de IVA (21% = 252,00 €) y Recargo de Equivalencia para comercio minorista (5,2% = 62,40 €). Total: 1.514,40 €',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-108',
+    fechaEmision: '2026-09-20',
+    idProveedor: 'PROV-011',
+    nombreProveedor: 'Asesoría Fiscal & Laboral Gómez & Asociados',
+    concepto: 'Servicios de asesoramiento contable, fiscal y liquidación tributaria T3 2026',
+    importe: 650.00,
+    fechaVencimiento: '2026-10-20',
+    estado: 'Pagada',
+    fechaPago: '2026-09-22',
+    baseImponible: 650.00,
+    tiposIVA: '21%',
+    cuotaIVA: 136.50,
+    aplicaRetencionIRPF: true,
+    tipoRetencionIRPF: '15% Profesional',
+    porcentajeIRPF: 15,
+    cuotaIRPF: 97.50,
+    conceptoRetencionIRPF: 'PROFESIONAL',
+    total: 689.00,
+    regimenFiscal: 'Régimen General Peninsular',
+    categoriaGasto: 'Servicios y Gestión',
+    lineas: [
+      { nombreProducto: 'Honorarios asesoría tributaria y contable mensual', cantidad: 1, unidad: 'mes', precioUnitario: 450.00, subtotal: 450.00 },
+      { nombreProducto: 'Gestión laboral y tramitación seguros sociales', cantidad: 1, unidad: 'mes', precioUnitario: 200.00, subtotal: 200.00 }
+    ],
+    notas: 'Retención de IRPF aplicada al 15% (97,50 €) para Modelo 111 de la AEAT. Líquido: 689,00 €',
+    sincronizadoSheets: true
+  },
+  {
+    idFactura: 'FAC-2026-112',
+    fechaEmision: '2026-09-23',
+    idProveedor: 'PROV-012',
+    nombreProveedor: 'Inmobiliaria & Locales Comerciales Centro S.L.',
+    concepto: 'Alquiler mensual obrador principal y almacén logístico Septiembre 2026',
+    importe: 1800.00,
+    fechaVencimiento: '2026-10-05',
+    estado: 'Pendiente',
+    fechaPago: 'Pendiente de confirmar',
+    baseImponible: 1800.00,
+    tiposIVA: '21%',
+    cuotaIVA: 378.00,
+    aplicaRetencionIRPF: true,
+    tipoRetencionIRPF: '19% Arrendamiento',
+    porcentajeIRPF: 19,
+    cuotaIRPF: 342.00,
+    conceptoRetencionIRPF: 'ARRENDAMIENTO',
+    total: 1836.00,
+    regimenFiscal: 'Régimen General Peninsular',
+    categoriaGasto: 'Suministros y Energía',
+    lineas: [
+      { nombreProducto: 'Renta arrendamiento nave obrador central (350m2)', cantidad: 1, unidad: 'mes', precioUnitario: 1500.00, subtotal: 1500.00 },
+      { nombreProducto: 'Cuota garaje y muelle de carga refrigerado', cantidad: 1, unidad: 'mes', precioUnitario: 300.00, subtotal: 300.00 }
+    ],
+    notas: 'Retención sobre arrendamiento de inmueble urbano al 19% (342,00 €) para Modelo 115 AEAT. Líquido a pagar: 1.836,00 €',
     sincronizadoSheets: true
   }
 ];

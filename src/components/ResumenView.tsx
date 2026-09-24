@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Printer,
   Percent,
-  Tag
+  Tag,
+  Landmark,
+  ShieldCheck
 } from 'lucide-react';
 import {
   AreaChart,
@@ -35,6 +37,7 @@ import {
 import { Factura, Proveedor, Alerta, DatosNegocio, DEFAULT_DATOS_NEGOCIO, CategoriaGastoDef } from '../types';
 import { obtenerParametrosSistema } from '../utils/parametrosSistema';
 import { obtenerCategoriasGasto, obtenerColorCategoria } from '../utils/categoriasGasto';
+import { procesarRetencionesIRPF } from '../utils/fiscalidad';
 
 interface ResumenViewProps {
   facturas: Factura[];
@@ -151,6 +154,28 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
     () => facturasFiltradas.reduce((sum, f) => sum + f.cuotaIVA, 0),
     [facturasFiltradas]
   );
+
+  // Retenciones de IRPF aplicadas en las facturas y Carga Fiscal Total (IVA + IRPF)
+  const metricasIRPF = useMemo(() => {
+    const resumen = procesarRetencionesIRPF(facturasFiltradas);
+    const cuotaTotal = resumen.cuotaIRPFTotal || 0;
+    const baseTotal = resumen.totalBaseSujeta || 0;
+    const count = resumen.numFacturasConIRPF || 0;
+    const mod111Cuota = resumen.modelo111?.cuotaTotal || 0;
+    const mod115Cuota = resumen.modelo115?.cuotaTotal || 0;
+    // Carga fiscal acumulada (Impuesto Indirecto IVA/IGIC Soportado + Retenciones IRPF gestionadas)
+    const cargaFiscalTotal = ivaTotal + cuotaTotal;
+
+    return {
+      cuotaTotal,
+      baseTotal,
+      count,
+      mod111Cuota,
+      mod115Cuota,
+      cargaFiscalTotal,
+      numPerceptores: (resumen.perceptores || []).length,
+    };
+  }, [facturasFiltradas, ivaTotal]);
 
   const proveedoresActivos = useMemo(() => {
     const ids = new Set(facturasFiltradas.map((f) => f.idProveedor));
@@ -530,17 +555,17 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
       )}
 
       {/* KPI Grid: Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-5">
         {/* KPI 1: Gasto Total Acumulado */}
         <div
           id="kpi-gasto-total"
-          className="p-5 rounded-2xl bg-gradient-to-br from-[#121a2d] to-[#0c121e] border border-slate-800/90 flex flex-col justify-between relative overflow-hidden shadow-xl shadow-black/20"
+          className="p-5 rounded-2xl bg-gradient-to-br from-[#121a2d] to-[#0c121e] border border-slate-800/90 hover:border-slate-700 transition-all flex flex-col justify-between relative overflow-hidden shadow-xl shadow-black/20 group"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
               1. Gasto Total
             </span>
-            <div className="w-7 h-7 rounded-lg bg-rose-500/15 flex items-center justify-center text-rose-400">
+            <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center text-rose-400">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
@@ -553,12 +578,12 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
               })}{' '}
               €
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5 font-medium">
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
               Total periodo seleccionado
             </p>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+          <div className="flex items-center justify-between pt-2.5 border-t border-slate-800/80 text-xs">
             <div
               className={`flex items-center gap-1 font-semibold text-[11px] ${
                 metricasMesVsMes.tendencia === 'subida'
@@ -578,8 +603,8 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
                 {metricasMesVsMes.variacionPorcentaje.toFixed(1)}% MoM
               </span>
             </div>
-            <span className="text-[11px] text-slate-400">
-              {facturasFiltradas.length} ops
+            <span className="text-[11px] text-slate-400 font-medium">
+              {facturasFiltradas.length} ops registradas
             </span>
           </div>
         </div>
@@ -594,7 +619,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
               2. Variación MoM
             </span>
             <div
-              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                 metricasMesVsMes.tendencia === 'subida'
                   ? 'bg-rose-500/15 text-rose-400'
                   : metricasMesVsMes.tendencia === 'bajada'
@@ -613,7 +638,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
           </div>
 
           <div className="my-3">
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div
                 className={`text-2xl lg:text-3xl font-extrabold tracking-tight ${
                   metricasMesVsMes.tendencia === 'subida'
@@ -627,19 +652,23 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
                 {metricasMesVsMes.variacionPorcentaje.toFixed(1)}%
               </div>
               <span
-                className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase px-2 py-0.5 rounded-md border tracking-wide shrink-0 ${
                   metricasMesVsMes.tendencia === 'subida'
-                    ? 'bg-rose-500/20 text-rose-300'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                     : metricasMesVsMes.tendencia === 'bajada'
-                    ? 'bg-emerald-500/20 text-emerald-300'
-                    : 'bg-slate-800 text-slate-400'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
                 }`}
               >
-                {metricasMesVsMes.tendencia === 'subida'
-                  ? 'Incremento'
-                  : metricasMesVsMes.tendencia === 'bajada'
-                  ? 'Reducción'
-                  : 'Estable'}
+                {metricasMesVsMes.tendencia === 'subida' && <TrendingUp className="w-3 h-3" />}
+                {metricasMesVsMes.tendencia === 'bajada' && <TrendingDown className="w-3 h-3" />}
+                <span>
+                  {metricasMesVsMes.tendencia === 'subida'
+                    ? 'Incremento'
+                    : metricasMesVsMes.tendencia === 'bajada'
+                    ? 'Reducción'
+                    : 'Estable'}
+                </span>
               </span>
             </div>
             <p className="text-[11px] text-slate-300 mt-1 font-medium">
@@ -647,7 +676,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
             <span
               className={`font-semibold text-[11px] ${
                 metricasMesVsMes.diferencia > 0
@@ -665,7 +694,7 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
               €
             </span>
             <span
-              className="text-[11px] text-slate-400"
+              className="text-[11px] text-slate-400 font-medium"
               title={`Gasto en ${metricasMesVsMes.mesAnteriorNombre}: ${metricasMesVsMes.gastoMesAnterior.toLocaleString('es-ES')} €`}
             >
               Ant: {metricasMesVsMes.gastoMesAnterior.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €
@@ -683,23 +712,25 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
               3. Facturas
             </span>
-            <FileText className="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-colors" />
+            <div className="w-8 h-8 rounded-lg bg-slate-800/60 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:bg-slate-800 transition-colors">
+              <FileText className="w-4 h-4" />
+            </div>
           </div>
           <div className="my-3">
             <div className="text-2xl lg:text-3xl font-extrabold text-slate-100">
               {numFacturas.toLocaleString('es-ES')}
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
               Documentos registrados
             </p>
           </div>
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
             <div className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
               <span>100% auditadas</span>
             </div>
-            <span className="text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors">
-              Ver lista
+            <span className="text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors font-medium">
+              Ver lista →
             </span>
           </div>
         </div>
@@ -713,7 +744,9 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
               4. Gasto Medio
             </span>
-            <Layers className="w-4 h-4 text-slate-400" />
+            <div className="w-8 h-8 rounded-lg bg-slate-800/60 flex items-center justify-center text-slate-400">
+              <Layers className="w-4 h-4" />
+            </div>
           </div>
           <div className="my-3">
             <div className="text-2xl lg:text-3xl font-extrabold text-slate-100">
@@ -723,12 +756,13 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
               })}{' '}
               €
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
               Por factura emitida
             </p>
           </div>
-          <div className="flex items-center gap-1 text-xs text-slate-400 pt-2 border-t border-slate-800/80">
-            <span className="text-[11px]">Ticket medio operativo</span>
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
+            <span className="text-[11px] text-slate-400 font-medium">Ticket medio operativo</span>
+            <span className="text-[11px] text-slate-400 font-medium">Sin anomalías</span>
           </div>
         </div>
 
@@ -742,7 +776,9 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
               5. IVA Soportado
             </span>
-            <Receipt className="w-4 h-4 text-sky-400" />
+            <div className="w-8 h-8 rounded-lg bg-sky-500/15 flex items-center justify-center text-sky-400">
+              <Receipt className="w-4 h-4" />
+            </div>
           </div>
           <div className="my-3">
             <div className="text-2xl lg:text-3xl font-extrabold text-sky-400">
@@ -752,19 +788,57 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
               })}{' '}
               €
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
               Cuota deducible registrada
             </p>
           </div>
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
-            <span className="text-[11px] text-slate-300">4%, 10% y 21%</span>
-            <span className="text-[11px] text-slate-400 group-hover:text-sky-300 transition-colors">
-              Ver modelo
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
+            <span className="text-[11px] text-slate-300 font-medium">Tipos 21%, 10% y 4%</span>
+            <span className="text-[11px] text-slate-400 group-hover:text-sky-300 transition-colors font-medium">
+              Ver modelo →
             </span>
           </div>
         </div>
 
-        {/* KPI 6: Proveedores */}
+        {/* KPI 6: Retenciones IRPF & Carga Fiscal */}
+        <div
+          id="kpi-retenciones-irpf"
+          onClick={() => onNavigate('modelos-fiscales')}
+          className="p-5 rounded-2xl bg-[#101726] border border-slate-800/80 hover:border-emerald-500/40 transition-all cursor-pointer flex flex-col justify-between group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              6. Retención IRPF
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400">
+              <Landmark className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="my-3">
+            <div className="text-2xl lg:text-3xl font-extrabold text-emerald-400">
+              {metricasIRPF.cuotaTotal.toLocaleString('es-ES', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              €
+            </div>
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
+              {metricasIRPF.count > 0
+                ? `${metricasIRPF.count} factura${metricasIRPF.count > 1 ? 's' : ''} con retención`
+                : 'Sin retenciones en periodo'}
+            </p>
+          </div>
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
+            <span className="text-[11px] text-slate-300 font-medium" title={`IVA: ${ivaTotal.toFixed(2)}€ + IRPF: ${metricasIRPF.cuotaTotal.toFixed(2)}€`}>
+              Carga fiscal: <strong className="text-emerald-300 font-semibold">{metricasIRPF.cargaFiscalTotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong>
+            </span>
+            <span className="text-[11px] text-slate-400 group-hover:text-emerald-300 transition-colors font-medium">
+              Mod. 111/115 →
+            </span>
+          </div>
+        </div>
+
+        {/* KPI 7: Proveedores */}
         <div
           id="kpi-proveedores"
           onClick={() => onNavigate('proveedores')}
@@ -772,29 +846,31 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              6. Proveedores
+              7. Proveedores
             </span>
-            <Building2 className="w-4 h-4 text-amber-400" />
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400">
+              <Building2 className="w-4 h-4" />
+            </div>
           </div>
           <div className="my-3">
             <div className="text-2xl lg:text-3xl font-extrabold text-slate-100">
               {proveedoresActivos.toLocaleString('es-ES')}
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
-              Proveedores con compras
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
+              Proveedores con compras activas
             </p>
           </div>
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
-            <span className="text-slate-400 text-[11px] group-hover:text-amber-300 transition-colors">
-              Ver directorio
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
+            <span className="text-slate-400 text-[11px] group-hover:text-amber-300 transition-colors font-medium">
+              Ver directorio →
             </span>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-slate-400 font-medium">
               {proveedores.length} en total
             </span>
           </div>
         </div>
 
-        {/* KPI 7: Alertas Activas (Directamente después de Proveedores) */}
+        {/* KPI 8: Alertas Activas */}
         <div
           id="kpi-alertas-activas"
           onClick={() => onNavigate('alertas')}
@@ -802,10 +878,10 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              7. Alertas Activas
+              8. Alertas Activas
             </span>
             <div
-              className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                 alertasActivasCount > 0
                   ? 'bg-rose-500/20 text-rose-400'
                   : 'bg-emerald-500/20 text-emerald-400'
@@ -822,23 +898,23 @@ export const ResumenView: React.FC<ResumenViewProps> = ({
             >
               {alertasActivasCount.toLocaleString('es-ES')}
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-300 mt-1 font-medium">
               {alertasActivasCount === 1
                 ? 'Anomalía detectada'
                 : 'Anomalías pendientes'}
             </p>
           </div>
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
-            <span className="text-slate-400 text-[11px] group-hover:text-rose-300 transition-colors">
-              Ver alertas
+          <div className="flex items-center justify-between text-xs pt-2.5 border-t border-slate-800/80">
+            <span className="text-slate-400 text-[11px] group-hover:text-rose-300 transition-colors font-medium">
+              Ver alertas →
             </span>
             <span
-              className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+              className={`font-bold px-2 py-0.5 rounded text-[10px] ${
                 alertasCriticasCount > 0
-                  ? 'bg-red-500/25 text-red-300'
+                  ? 'bg-red-500/25 text-red-300 border border-red-500/30'
                   : alertasActivasCount > 0
-                  ? 'bg-amber-500/20 text-amber-300'
-                  : 'bg-emerald-500/20 text-emerald-400'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
               }`}
             >
               {alertasCriticasCount > 0
